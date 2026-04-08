@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  sglang-router:
+    image: lmsysorg/sgl-model-gateway:v0.3.2
+    container_name: sglang-router
+    restart: always
+    ports:
+      - "8082:8082"
+    command: 
+      [
+        "--worker-urls",
+        "http://192.168.102.26:30000",
+        "http://192.168.102.26:30001",
+        "http://192.168.102.26:30002",
+        "http://192.168.102.26:30003",
+        "http://192.168.102.26:30004",
+        "http://192.168.102.26:30005",
+        "http://192.168.102.26:30006",
+        "http://192.168.102.26:30007",
+        "--policy", "cache_aware",
+        "--host", "0.0.0.0",
+        "--port", "8082"
+      ]

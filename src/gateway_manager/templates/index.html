@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGL-Model-Gateway 管理界面</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SGL-Model-Gateway 管理界面</h1>
+            <nav>
+                <a href="/" class="active">首页</a>
+                <a href="/models">模型管理</a>
+                <a href="/gateway">网关配置</a>
+                <a href="/settings">设置</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="dashboard">
+                <h2>系统概览</h2>
+                <div class="stats-grid" id="stats-grid">
+                    <div class="stat-card">
+                        <h3>运行中模型</h3>
+                        <p class="stat-value" id="running-models">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>已停止模型</h3>
+                        <p class="stat-value" id="stopped-models">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Gateway 状态</h3>
+                        <p class="stat-value" id="gateway-status">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Docker 容器</h3>
+                        <p class="stat-value" id="docker-containers">-</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="quick-actions">
+                <h2>快捷操作</h2>
+                <div class="actions-grid">
+                    <button class="btn btn-primary" onclick="startAllModels()">启动所有模型</button>
+                    <button class="btn btn-danger" onclick="stopAllModels()">停止所有模型</button>
+                    <button class="btn btn-primary" onclick="restartGateway()">重启网关</button>
+                    <button class="btn btn-secondary" onclick="refreshDashboard()">刷新数据</button>
+                </div>
+            </section>
+
+            <section class="running-models">
+                <h2>运行中的模型</h2>
+                <div id="running-models-list" class="models-list">
+                    <p class="loading">加载中...</p>
+                </div>
+            </section>
+
+            <section class="gateway-info">
+                <h2>Gateway 信息</h2>
+                <div id="gateway-info" class="info-card">
+                    <p class="loading">加载中...</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 SGL-Model-Gateway Manager</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

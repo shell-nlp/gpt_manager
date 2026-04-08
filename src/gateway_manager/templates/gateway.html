@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网关配置 - SGL-Model-Gateway</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SGL-Model-Gateway 管理界面</h1>
+            <nav>
+                <a href="/">首页</a>
+                <a href="/models">模型管理</a>
+                <a href="/gateway" class="active">网关配置</a>
+                <a href="/settings">设置</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="gateway-header">
+                <h2>Gateway 配置</h2>
+                <div class="gateway-actions">
+                    <button class="btn btn-primary" id="gateway-start-btn" onclick="startGateway()">启动网关</button>
+                    <button class="btn btn-danger" id="gateway-stop-btn" onclick="stopGateway()">停止网关</button>
+                    <button class="btn btn-warning" onclick="restartGateway()">重启网关</button>
+                </div>
+            </section>
+
+            <section class="gateway-config">
+                <h3>当前配置</h3>
+                <div id="gateway-config-info" class="info-card">
+                    <p class="loading">加载中...</p>
+                </div>
+            </section>
+
+            <section class="gateway-edit">
+                <h3>修改配置</h3>
+                <form id="gateway-config-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="gw-host">监听地址</label>
+                            <input type="text" id="gw-host" name="host" value="0.0.0.0">
+                        </div>
+                        <div class="form-group">
+                            <label for="gw-port">端口</label>
+                            <input type="number" id="gw-port" name="port" value="8082">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="gw-policy">负载均衡策略</label>
+                        <select id="gw-policy" name="policy">
+                            <option value="round_robin">Round Robin</option>
+                            <option value="least_loaded">Least Loaded</option>
+                            <option value="power_of_two">Power of Two</option>
+                            <option value="cache_aware">Cache Aware</option>
+                            <option value="random">Random</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="gw-image">Docker 镜像</label>
+                        <input type="text" id="gw-image" name="image" placeholder="lmsysorg/sgl-model-gateway:v0.3.2">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="gw-worker-urls">Worker URLs (每行一个)</label>
+                        <textarea id="gw-worker-urls" name="worker_urls" rows="8" placeholder="http://192.168.102.26:30000&#10;http://192.168.102.26:30001"></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">保存配置</button>
+                        <button type="button" class="btn btn-secondary" onclick="loadGatewayConfig()">重置</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="gateway-logs">
+                <h3>日志</h3>
+                <div class="logs-container">
+                    <pre id="gateway-logs">暂无日志</pre>
+                </div>
+                <div class="logs-actions">
+                    <button class="btn btn-secondary" onclick="refreshGatewayLogs()">刷新日志</button>
+                    <button class="btn btn-secondary" onclick="loadMoreLogs()">加载更多</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 SGL-Model-Gateway Manager</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/gateway.js"></script>
+</body>
+</html>
