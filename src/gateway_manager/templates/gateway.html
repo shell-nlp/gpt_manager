@@ -21,6 +21,9 @@
         <main>
             <section class="gateway-header">
                 <h2>Gateway 配置</h2>
+                <div class="gateway-status">
+                    <span id="gateway-status-badge" class="status-badge status-stopped">停止</span>
+                </div>
                 <div class="gateway-actions">
                     <button class="btn btn-primary" id="gateway-start-btn" onclick="startGateway()">启动网关</button>
                     <button class="btn btn-danger" id="gateway-stop-btn" onclick="stopGateway()">停止网关</button>
@@ -32,6 +35,18 @@
                 <h3>当前配置</h3>
                 <div id="gateway-config-info" class="info-card">
                     <p class="loading">加载中...</p>
+                </div>
+            </section>
+
+            <section class="gateway-workers">
+                <h3>已配置的 Worker URLs</h3>
+                <div id="worker-urls-list" class="worker-urls-container">
+                    <p class="loading">加载中...</p>
+                </div>
+                <div class="worker-urls-actions">
+                    <button class="btn btn-secondary" onclick="syncWorkerUrls()">从运行中的模型同步</button>
+                    <button class="btn btn-secondary" onclick="checkAllWorkerUrls()">测试所有连接</button>
+                    <button class="btn btn-secondary" onclick="loadWorkerUrls()">刷新</button>
                 </div>
             </section>
 

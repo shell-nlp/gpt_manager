@@ -67,9 +67,20 @@ const API = {
 
     getGatewayLogs: (tail = 100) => apiRequest(`/api/gateway/logs?tail=${tail}`),
 
+    getGatewayWorkerUrls: () => apiRequest('/api/gateway/worker-urls'),
+
+    syncWorkerUrls: () => apiRequest('/api/gateway/worker-urls/sync', { method: 'POST' }),
+
     getImages: () => apiRequest('/api/config/images'),
 
+    updateImages: (data) => apiRequest('/api/config/images', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+    }),
+
     getWorkerUrls: () => apiRequest('/api/worker-urls'),
+
+    checkWorkerUrls: () => apiRequest('/api/worker-urls/check'),
 
     getBackendTypes: () => apiRequest('/api/backend/types'),
 

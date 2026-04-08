@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Dict, List, Optional
 import logging
 
 from gateway_manager.models.schemas import (
@@ -10,7 +10,6 @@ from gateway_manager.models.schemas import (
     LMDeployConfig,
     TabbyConfig,
     OpenVINOConfig,
-    ModelInstance,
 )
 
 logger = logging.getLogger(__name__)

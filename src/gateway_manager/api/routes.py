@@ -1,32 +1,31 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from pydantic import BaseModel
 
 from gateway_manager.core.model_manager import ModelManager
 from gateway_manager.core.gateway_manager import GatewayManager
+from gateway_manager.core.config_manager import ConfigManager
 from gateway_manager.models.schemas import (
     InferenceBackendType,
-    GatewayConfig,
     LoadBalancingPolicy,
-    AppConfig,
 )
 
 router = APIRouter()
 
 model_manager: Optional[ModelManager] = None
 gateway_manager: Optional[GatewayManager] = None
-app_config: Optional[AppConfig] = None
+config_manager: Optional[ConfigManager] = None
 
 
 def init_managers(
     mgr: ModelManager,
     gw_mgr: GatewayManager,
-    cfg: AppConfig,
+    cfg_mgr: ConfigManager,
 ):
-    global model_manager, gateway_manager, app_config
+    global model_manager, gateway_manager, config_manager
     model_manager = mgr
     gateway_manager = gw_mgr
-    app_config = cfg
+    config_manager = cfg_mgr
 
 
 class CreateModelRequest(BaseModel):
@@ -51,6 +50,15 @@ class UpdateGatewayRequest(BaseModel):
     image: Optional[str] = None
     policy: Optional[LoadBalancingPolicy] = None
     worker_urls: Optional[List[str]] = None
+
+
+class UpdateImagesRequest(BaseModel):
+    sglang_image: Optional[str] = None
+    vllm_image: Optional[str] = None
+    tabby_image: Optional[str] = None
+    lmdeploy_image: Optional[str] = None
+    openvino_image: Optional[str] = None
+    gateway_image: Optional[str] = None
 
 
 @router.get("/api/docker/info")
@@ -270,17 +278,38 @@ async def get_gateway_logs(tail: int = 100):
 
 @router.get("/api/config/images")
 async def get_images():
-    if app_config is None:
-        raise HTTPException(status_code=500, detail="App config not initialized")
+    if config_manager is None:
+        raise HTTPException(status_code=500, detail="Config manager not initialized")
 
     return {
-        "sglang_image": app_config.sglang_image,
-        "vllm_image": app_config.vllm_image,
-        "tabby_image": app_config.tabby_image,
-        "lmdeploy_image": app_config.lmdeploy_image,
-        "openvino_image": app_config.openvino_image,
-        "gateway_image": app_config.gateway_image,
+        "sglang_image": config_manager.get("images.sglang_image", "lmsysorg/sglang:v0.5.10"),
+        "vllm_image": config_manager.get("images.vllm_image", "vllm/vllm:v0.3.0"),
+        "tabby_image": config_manager.get("images.tabby_image", "ghcr.io/tabby/tabby:latest"),
+        "lmdeploy_image": config_manager.get("images.lmdeploy_image", "openmmlab/lmdeploy:latest"),
+        "openvino_image": config_manager.get("images.openvino_image", "openvino/ovms:latest"),
+        "gateway_image": config_manager.get("images.gateway_image", "lmsysorg/sgl-model-gateway:v0.3.2"),
     }
+
+
+@router.patch("/api/config/images")
+async def update_images(req: UpdateImagesRequest):
+    if config_manager is None:
+        raise HTTPException(status_code=500, detail="Config manager not initialized")
+
+    if req.sglang_image:
+        config_manager.set("images.sglang_image", req.sglang_image)
+    if req.vllm_image:
+        config_manager.set("images.vllm_image", req.vllm_image)
+    if req.tabby_image:
+        config_manager.set("images.tabby_image", req.tabby_image)
+    if req.lmdeploy_image:
+        config_manager.set("images.lmdeploy_image", req.lmdeploy_image)
+    if req.openvino_image:
+        config_manager.set("images.openvino_image", req.openvino_image)
+    if req.gateway_image:
+        config_manager.set("images.gateway_image", req.gateway_image)
+
+    return {"message": "Images updated successfully"}
 
 
 @router.get("/api/worker-urls")
@@ -289,6 +318,24 @@ async def get_worker_urls():
         raise HTTPException(status_code=500, detail="Model manager not initialized")
 
     return {"worker_urls": model_manager.get_worker_urls()}
+
+
+@router.get("/api/gateway/worker-urls")
+async def get_gateway_worker_urls():
+    if gateway_manager is None:
+        raise HTTPException(status_code=500, detail="Gateway manager not initialized")
+
+    return {"worker_urls": gateway_manager.worker_urls}
+
+
+@router.post("/api/gateway/worker-urls/sync")
+async def sync_worker_urls():
+    if model_manager is None or gateway_manager is None:
+        raise HTTPException(status_code=500, detail="Managers not initialized")
+
+    worker_urls = model_manager.get_worker_urls()
+    gateway_manager.update_worker_urls(worker_urls)
+    return {"message": "Worker URLs synced successfully", "worker_urls": worker_urls}
 
 
 @router.get("/api/backend/types")
@@ -309,3 +356,35 @@ async def get_policy_types():
             for p in LoadBalancingPolicy
         ]
     }
+
+
+class WorkerUrlStatus(BaseModel):
+    url: str
+    status: str
+    message: Optional[str] = None
+
+
+@router.get("/api/worker-urls/check")
+async def check_worker_urls():
+    if gateway_manager is None:
+        raise HTTPException(status_code=500, detail="Gateway manager not initialized")
+
+    import httpx
+    results: List[WorkerUrlStatus] = []
+
+    for url in gateway_manager.worker_urls:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{url.rstrip('/')}/v1/models")
+                if response.status_code == 200:
+                    results.append(WorkerUrlStatus(url=url, status="healthy", message="OK"))
+                else:
+                    results.append(WorkerUrlStatus(url=url, status="error", message=f"HTTP {response.status_code}"))
+        except httpx.TimeoutException:
+            results.append(WorkerUrlStatus(url=url, status="error", message="连接超时"))
+        except httpx.RequestError as e:
+            results.append(WorkerUrlStatus(url=url, status="error", message=f"连接失败: {str(e)}"))
+        except Exception as e:
+            results.append(WorkerUrlStatus(url=url, status="error", message=str(e)))
+
+    return {"results": [r.model_dump() for r in results]}

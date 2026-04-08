@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from starlette.requests import Request
 
-from gateway_manager.models.schemas import AppConfig, GatewayConfig
+from gateway_manager.core.config_manager import ConfigManager
 from gateway_manager.core.model_manager import ModelManager
 from gateway_manager.core.gateway_manager import GatewayManager
 from gateway_manager.api.routes import router, init_managers
@@ -29,12 +29,11 @@ def get_html(filename: str) -> str:
 async def lifespan(app: FastAPI):
     logger.info("Starting Gateway Manager...")
 
-    app_config = AppConfig()
-    model_manager = ModelManager(app_config)
-    gateway_config = GatewayConfig()
-    gateway_manager = GatewayManager(gateway_config)
+    config_manager = ConfigManager()
+    model_manager = ModelManager(config_manager)
+    gateway_manager = GatewayManager(config_manager)
 
-    init_managers(model_manager, gateway_manager, app_config)
+    init_managers(model_manager, gateway_manager, config_manager)
 
     logger.info("Gateway Manager started successfully")
     yield

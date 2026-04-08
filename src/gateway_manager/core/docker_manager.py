@@ -1,8 +1,9 @@
 import docker
 from docker.models.containers import Container
-from docker.errors import NotFound, APIError
+from docker.errors import APIError
 from typing import Optional, List, Dict, Any
 import logging
+import json
 
 from gateway_manager.models.schemas import ContainerStatus
 
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class DockerManager:
-    _instance: Optional['DockerManager'] = None
+    _instance: Optional["DockerManager"] = None
     _client: Optional[docker.DockerClient] = None
 
     def __new__(cls):
@@ -80,24 +81,10 @@ class DockerManager:
                 logger.info(f"容器 {name} 已存在")
                 return existing
 
-            host_config = {}
-            if shm_size:
-                host_config["shm_size"] = shm_size
-            if gpu_ids is not None and len(gpu_ids) > 0:
-                host_config["device_requests"] = [
-                    docker.types.DeviceRequest(
-                        device_ids=[str(gpu_id) for gpu_id in gpu_ids],
-                        capabilities=[["gpu"]]
-                    )
-                ]
-
-            host_config["restart_policy"] = {"Name": restart_policy}
-
             kwargs: Dict[str, Any] = {
                 "name": name,
                 "image": image,
                 "detach": detach,
-                "host_config": self.client.api.create_host_config(**host_config) if host_config else None,
             }
 
             if command:
@@ -108,7 +95,7 @@ class DockerManager:
                 kwargs["volumes"] = volumes
             if environment:
                 kwargs["environment"] = environment
-
+            logger.info(f"创建容器 {name} 的参数: {json.dumps(kwargs, indent=2)}")
             container = self.client.containers.run(**kwargs)
             logger.info(f"容器 {name} 创建成功")
             return container
@@ -170,8 +157,8 @@ class DockerManager:
     def remove_container(self, name: str, force: bool = False) -> bool:
         container = self.get_container(name)
         if container is None:
-            logger.info(f"容器 {name} 不存在，无需删除")
-            return True
+            logger.error(f"容器 {name} 不存在")
+            return False
 
         try:
             container.remove(force=force)
@@ -187,30 +174,21 @@ class DockerManager:
             return None
 
         try:
-            logs = container.logs(tail=tail, timestamps=True).decode("utf-8")
-            return logs
+            logs = container.logs(tail=tail, timestamps=True)
+            return logs.decode("utf-8", errors="ignore")
         except Exception as e:
             logger.error(f"获取容器 {name} 日志失败: {e}")
             return None
-
-    def list_containers(self, all: bool = True) -> List[Container]:
-        try:
-            return self.client.containers.list(all=all)
-        except Exception as e:
-            logger.error(f"列出容器失败: {e}")
-            return []
 
     def get_docker_info(self) -> Dict[str, Any]:
         try:
             info = self.client.info()
             return {
+                "version": info.get("ServerVersion", "unknown"),
                 "containers_running": info.get("ContainersRunning", 0),
-                "containers_total": info.get("Containers", 0),
-                "images_total": info.get("Images", 0),
-                "driver": info.get("Driver", ""),
-                "memory_total": info.get("MemTotal", 0),
-                "nvidia_version": info.get("NvidiaVersion", "N/A"),
+                "containers_stopped": info.get("ContainersStopped", 0),
+                "images": info.get("Images", 0),
             }
         except Exception as e:
-            logger.error(f"获取Docker信息失败: {e}")
-            return {}
+            logger.error(f"获取 Docker 信息失败: {e}")
+            return {"error": str(e)}

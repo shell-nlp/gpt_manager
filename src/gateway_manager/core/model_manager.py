@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Any
-from datetime import datetime
 import logging
 import uuid
+import socket
 
 from gateway_manager.models.schemas import (
     InferenceBackendType,
@@ -9,22 +9,87 @@ from gateway_manager.models.schemas import (
     SGLangConfig,
     ModelInstance,
     ContainerStatus,
-    AppConfig,
 )
 from gateway_manager.core.docker_manager import DockerManager
 from gateway_manager.core.backend_manager import BackendManagerFactory
+from gateway_manager.core.config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 
 class ModelManager:
-    def __init__(self, app_config: AppConfig):
-        self.app_config = app_config
+    def __init__(self, config_manager: ConfigManager):
+        self.config_manager = config_manager
         self.docker_manager = DockerManager()
         self.models: Dict[str, ModelInstance] = {}
+        self._load_models()
 
     def _generate_model_id(self) -> str:
         return f"model-{uuid.uuid4().hex[:8]}"
+
+    def _load_models(self) -> None:
+        config = self.config_manager.load()
+        models_config = config.get("models", [])
+        for model_data in models_config:
+            try:
+                model = self._create_model_from_config(model_data)
+                self.models[model.id] = model
+            except Exception as e:
+                logger.error(f"加载模型配置失败: {model_data.get('name', 'unknown')}: {e}")
+
+    def _create_model_from_config(self, model_data: Dict[str, Any]) -> ModelInstance:
+        model_id = model_data.get("id", self._generate_model_id())
+        container_name = model_data.get("container_name", f"sglang-{model_data.get('port', 30000)}")
+
+        gpu_ids = model_data.get("gpu_ids", [0])
+        if isinstance(gpu_ids, str):
+            gpu_ids = [int(x) for x in gpu_ids.split(",")]
+
+        base_config = BaseModelConfig(
+            model_path=model_data["model_path"],
+            served_model_name=model_data["served_model_name"],
+            host=model_data.get("host", "0.0.0.0"),
+            port=model_data.get("port", 30000),
+            tensor_parallel=model_data.get("tensor_parallel", 1),
+            gpu_ids=gpu_ids,
+        )
+
+        backend_type = InferenceBackendType(model_data.get("backend_type", "sglang"))
+        if backend_type == InferenceBackendType.SGLANG:
+            config = SGLangConfig(**base_config.model_dump())
+        else:
+            config = base_config
+
+        model = ModelInstance(
+            id=model_id,
+            name=model_data["name"],
+            backend_type=backend_type,
+            config=config,
+            container_name=container_name,
+            image=model_data.get("image", ""),
+            status=ContainerStatus.STOPPED,
+        )
+
+        return model
+
+    def _save_models_to_config(self) -> bool:
+        models_config = []
+        for model in self.models.values():
+            models_config.append({
+                "id": model.id,
+                "name": model.name,
+                "backend_type": model.backend_type.value,
+                "model_path": model.config.model_path,
+                "served_model_name": model.config.served_model_name,
+                "host": model.config.host,
+                "port": model.config.port,
+                "tensor_parallel": model.config.tensor_parallel,
+                "gpu_ids": model.config.gpu_ids,
+                "image": model.image,
+                "container_name": model.container_name,
+            })
+
+        return self.config_manager.set("models", models_config)
 
     def create_model(
         self,
@@ -59,7 +124,14 @@ class ModelManager:
         else:
             config = base_config
 
-        final_image = image or self._get_default_image(backend_type)
+        default_images = {
+            InferenceBackendType.SGLANG: self.config_manager.get("images.sglang_image", "lmsysorg/sglang:v0.5.10"),
+            InferenceBackendType.VLLM: self.config_manager.get("images.vllm_image", "vllm/vllm:v0.3.0"),
+            InferenceBackendType.LMDEPLOY: self.config_manager.get("images.lmdeploy_image", "openmmlab/lmdeploy:latest"),
+            InferenceBackendType.TABBY: self.config_manager.get("images.tabby_image", "ghcr.io/tabby/tabby:latest"),
+            InferenceBackendType.OPENVINO: self.config_manager.get("images.openvino_image", "openvino/ovms:latest"),
+        }
+        final_image = image or default_images.get(backend_type, "lmsysorg/sglang:v0.5.10")
 
         model = ModelInstance(
             id=model_id,
@@ -72,18 +144,9 @@ class ModelManager:
         )
 
         self.models[model_id] = model
+        self._save_models_to_config()
         logger.info(f"模型 {name} (ID: {model_id}) 创建成功")
         return model
-
-    def _get_default_image(self, backend_type: InferenceBackendType) -> str:
-        images = {
-            InferenceBackendType.SGLANG: self.app_config.sglang_image,
-            InferenceBackendType.VLLM: self.app_config.vllm_image,
-            InferenceBackendType.LMDEPLOY: self.app_config.lmdeploy_image,
-            InferenceBackendType.TABBY: self.app_config.tabby_image,
-            InferenceBackendType.OPENVINO: self.app_config.openvino_image,
-        }
-        return images.get(backend_type, self.app_config.sglang_image)
 
     def start_model(self, model_id: str) -> bool:
         model = self.models.get(model_id)
@@ -154,6 +217,7 @@ class ModelManager:
         self.docker_manager.stop_container(model.container_name)
         if self.docker_manager.remove_container(model.container_name, force=force):
             del self.models[model_id]
+            self._save_models_to_config()
             logger.info(f"模型 {model.name} 删除成功")
             return True
 
@@ -186,6 +250,7 @@ class ModelManager:
         if "image" in kwargs:
             model.image = kwargs["image"]
 
+        self._save_models_to_config()
         logger.info(f"模型 {model.name} 配置更新成功")
         return True
 
@@ -196,46 +261,6 @@ class ModelManager:
                 port = model.config.port
                 host = model.config.host
                 if host == "0.0.0.0":
-                    import socket
                     host = socket.gethostbyname(socket.gethostname())
                 urls.append(f"http://{host}:{port}")
         return urls
-
-    def load_models_from_config(self, config: Dict[str, Any]) -> int:
-        loaded = 0
-        for model_data in config.get("models", []):
-            try:
-                model = self.create_model(
-                    name=model_data["name"],
-                    backend_type=InferenceBackendType(model_data.get("backend_type", "sglang")),
-                    model_path=model_data["model_path"],
-                    served_model_name=model_data["served_model_name"],
-                    host=model_data.get("host", "0.0.0.0"),
-                    port=model_data.get("port", 30000),
-                    tensor_parallel=model_data.get("tensor_parallel", 1),
-                    gpu_ids=model_data.get("gpu_ids", [0]),
-                    image=model_data.get("image"),
-                )
-                loaded += 1
-            except Exception as e:
-                logger.error(f"加载模型配置失败: {e}")
-
-        return loaded
-
-    def export_models_config(self) -> Dict[str, Any]:
-        models_config = []
-        for model in self.models.values():
-            models_config.append({
-                "name": model.name,
-                "backend_type": model.backend_type.value,
-                "model_path": model.config.model_path,
-                "served_model_name": model.config.served_model_name,
-                "host": model.config.host,
-                "port": model.config.port,
-                "tensor_parallel": model.config.tensor_parallel,
-                "gpu_ids": model.config.gpu_ids,
-                "image": model.image,
-                "status": model.status.value,
-            })
-
-        return {"models": models_config}
