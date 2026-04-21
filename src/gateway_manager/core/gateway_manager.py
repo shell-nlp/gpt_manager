@@ -1,11 +1,9 @@
 from typing import Dict, List, Optional, Any
-import logging
+from loguru import logger
 
 from gateway_manager.models.schemas import ContainerStatus, LoadBalancingPolicy
 from gateway_manager.core.docker_manager import DockerManager
 from gateway_manager.core.config_manager import ConfigManager
-
-logger = logging.getLogger(__name__)
 
 
 class GatewayManager:

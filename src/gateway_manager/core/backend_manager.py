@@ -1,18 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
-import logging
 
 from gateway_manager.models.schemas import (
     InferenceBackendType,
     BaseModelConfig,
     SGLangConfig,
     VLLMConfig,
-    LMDeployConfig,
-    TabbyConfig,
-    OpenVINOConfig,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class BaseBackendManager(ABC):
@@ -131,127 +125,15 @@ class VLLMManager(BaseBackendManager):
         ]
 
 
-class LMDeployManager(BaseBackendManager):
-    def __init__(self, config: LMDeployConfig, image: str = "openmmlab/lmdeploy:latest"):
-        super().__init__(config, image)
-        self.lmdeploy_config = config
-
-    def build_command(self) -> str:
-        cmd_parts = [
-            "lmdeploy serve api_server",
-            self.lmdeploy_config.model_path,
-            f"--server-name {self.lmdeploy_config.host}",
-            f"--server-port {self.lmdeploy_config.port}",
-            f"--tp {self.lmdeploy_config.tensor_parallel}",
-        ]
-
-        for key, value in self.lmdeploy_config.other_args.items():
-            if isinstance(value, bool):
-                if value:
-                    cmd_parts.append(f"--{key}")
-            else:
-                cmd_parts.append(f"--{key} {value}")
-
-        return " ".join(cmd_parts)
-
-    def build_ports(self) -> Dict[str, int]:
-        return {f"{self.lmdeploy_config.port}/tcp": self.lmdeploy_config.port}
-
-    def build_volumes(self) -> Dict[str, Dict[str, str]]:
-        return {
-            "/data/models": {"bind": "/data/models", "mode": "ro"}
-        }
-
-    def build_environment(self) -> List[str]:
-        return [
-            f"CUDA_VISIBLE_DEVICES={','.join(map(str, self.lmdeploy_config.gpu_ids))}",
-        ]
-
-
-class TabbyManager(BaseBackendManager):
-    def __init__(self, config: TabbyConfig, image: str = "ghcr.io/tabby/tabby:latest"):
-        super().__init__(config, image)
-        self.tabby_config = config
-
-    def build_command(self) -> str:
-        cmd_parts = [
-            "tabby",
-            "serve",
-            f"--model {self.tabby_config.model_path}",
-            f"--host {self.tabby_config.host}",
-            f"--port {self.tabby_config.port}",
-        ]
-
-        for key, value in self.tabby_config.other_args.items():
-            if isinstance(value, bool):
-                if value:
-                    cmd_parts.append(f"--{key}")
-            else:
-                cmd_parts.append(f"--{key} {value}")
-
-        return " ".join(cmd_parts)
-
-    def build_ports(self) -> Dict[str, int]:
-        return {f"{self.tabby_config.port}/tcp": self.tabby_config.port}
-
-    def build_volumes(self) -> Dict[str, Dict[str, str]]:
-        return {
-            "/data/models": {"bind": "/data/models", "mode": "ro"}
-        }
-
-    def build_environment(self) -> List[str]:
-        return [
-            f"CUDA_VISIBLE_DEVICES={','.join(map(str, self.tabby_config.gpu_ids))}",
-        ]
-
-
-class OpenVINOManager(BaseBackendManager):
-    def __init__(self, config: OpenVINOConfig, image: str = "openvino/ovms:latest"):
-        super().__init__(config, image)
-        self.openvino_config = config
-
-    def build_command(self) -> str:
-        cmd_parts = [
-            "/ovms/bin/ovms",
-            f"--model_path {self.openvino_config.model_path}",
-            f"--model_name {self.openvino_config.served_model_name}",
-            f"--port {self.openvino_config.port}",
-        ]
-
-        for key, value in self.openvino_config.other_args.items():
-            cmd_parts.append(f"--{key}")
-            if not isinstance(value, bool):
-                cmd_parts.append(str(value))
-
-        return " ".join(cmd_parts)
-
-    def build_ports(self) -> Dict[str, int]:
-        return {f"{self.openvino_config.port}/tcp": self.openvino_config.port}
-
-    def build_volumes(self) -> Dict[str, Dict[str, str]]:
-        return {
-            "/data/models": {"bind": "/data/models", "mode": "ro"}
-        }
-
-    def build_environment(self) -> List[str]:
-        return []
-
-
 class BackendManagerFactory:
     _managers: Dict[InferenceBackendType, type] = {
         InferenceBackendType.SGLANG: SGLangManager,
         InferenceBackendType.VLLM: VLLMManager,
-        InferenceBackendType.LMDEPLOY: LMDeployManager,
-        InferenceBackendType.TABBY: TabbyManager,
-        InferenceBackendType.OPENVINO: OpenVINOManager,
     }
 
     _default_images: Dict[InferenceBackendType, str] = {
         InferenceBackendType.SGLANG: "lmsysorg/sglang:v0.5.10",
         InferenceBackendType.VLLM: "vllm/vllm:v0.3.0",
-        InferenceBackendType.LMDEPLOY: "openmmlab/lmdeploy:latest",
-        InferenceBackendType.TABBY: "ghcr.io/tabby/tabby:latest",
-        InferenceBackendType.OPENVINO: "openvino/ovms:latest",
     }
 
     @classmethod
@@ -267,12 +149,3 @@ class BackendManagerFactory:
 
         final_image = image or cls._default_images.get(backend_type, "lmsysorg/sglang:v0.5.10")
         return manager_class(config, final_image)
-
-    @classmethod
-    def get_default_image(cls, backend_type: InferenceBackendType) -> str:
-        return cls._default_images.get(backend_type, "lmsysorg/sglang:v0.5.10")
-
-    @classmethod
-    def register_manager(cls, backend_type: InferenceBackendType, manager_class: type, default_image: str):
-        cls._managers[backend_type] = manager_class
-        cls._default_images[backend_type] = default_image

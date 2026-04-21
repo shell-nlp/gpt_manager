@@ -6,9 +6,6 @@ from enum import Enum
 class InferenceBackendType(str, Enum):
     SGLANG = "sglang"
     VLLM = "vllm"
-    TABBY = "tabby"
-    LMDEPLOY = "lmdeploy"
-    OPENVINO = "openvino"
 
 
 class ContainerStatus(str, Enum):
@@ -40,21 +37,6 @@ class VLLMConfig(BaseModelConfig):
     max_batch_size: int = Field(default=128, description="最大批次大小")
     max_sequence_length: int = Field(default=8192, description="最大序列长度")
     mem_fraction: float = Field(default=0.9, description="GPU内存占用比例")
-    other_args: Dict[str, Any] = Field(default_factory=dict, description="其他启动参数")
-
-
-class LMDeployConfig(BaseModelConfig):
-    max_batch_size: int = Field(default=128, description="最大批次大小")
-    max_sequence_length: int = Field(default=8192, description="最大序列长度")
-    mem_fraction: float = Field(default=0.9, description="GPU内存占用比例")
-    other_args: Dict[str, Any] = Field(default_factory=dict, description="其他启动参数")
-
-
-class TabbyConfig(BaseModelConfig):
-    other_args: Dict[str, Any] = Field(default_factory=dict, description="其他启动参数")
-
-
-class OpenVINOConfig(BaseModelConfig):
     other_args: Dict[str, Any] = Field(default_factory=dict, description="其他启动参数")
 
 

@@ -1,20 +1,19 @@
 from typing import Dict, List, Optional, Any
-import logging
 import uuid
 import socket
+from loguru import logger
 
 from gateway_manager.models.schemas import (
     InferenceBackendType,
     BaseModelConfig,
     SGLangConfig,
+    VLLMConfig,
     ModelInstance,
     ContainerStatus,
 )
 from gateway_manager.core.docker_manager import DockerManager
 from gateway_manager.core.backend_manager import BackendManagerFactory
 from gateway_manager.core.config_manager import ConfigManager
-
-logger = logging.getLogger(__name__)
 
 
 class ModelManager:
@@ -57,6 +56,8 @@ class ModelManager:
         backend_type = InferenceBackendType(model_data.get("backend_type", "sglang"))
         if backend_type == InferenceBackendType.SGLANG:
             config = SGLangConfig(**base_config.model_dump())
+        elif backend_type == InferenceBackendType.VLLM:
+            config = VLLMConfig(**base_config.model_dump())
         else:
             config = base_config
 
@@ -127,9 +128,6 @@ class ModelManager:
         default_images = {
             InferenceBackendType.SGLANG: self.config_manager.get("images.sglang_image", "lmsysorg/sglang:v0.5.10"),
             InferenceBackendType.VLLM: self.config_manager.get("images.vllm_image", "vllm/vllm:v0.3.0"),
-            InferenceBackendType.LMDEPLOY: self.config_manager.get("images.lmdeploy_image", "openmmlab/lmdeploy:latest"),
-            InferenceBackendType.TABBY: self.config_manager.get("images.tabby_image", "ghcr.io/tabby/tabby:latest"),
-            InferenceBackendType.OPENVINO: self.config_manager.get("images.openvino_image", "openvino/ovms:latest"),
         }
         final_image = image or default_images.get(backend_type, "lmsysorg/sglang:v0.5.10")
 
@@ -161,7 +159,7 @@ class ModelManager:
                 model.image,
             )
 
-            container = self.docker_manager.create_container(
+            container_id = self.docker_manager.create_container(
                 name=model.container_name,
                 image=model.image,
                 command=manager.build_command(),
@@ -172,8 +170,8 @@ class ModelManager:
                 gpu_ids=manager.get_gpu_ids(),
             )
 
-            if container:
-                model.container_id = container.id
+            if container_id:
+                model.container_id = container_id
                 model.status = ContainerStatus.RUNNING
                 logger.info(f"模型 {model.name} 启动成功")
                 return True

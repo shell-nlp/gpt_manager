@@ -1,20 +1,15 @@
 import os
-import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from starlette.requests import Request
+from loguru import logger
 
 from gateway_manager.core.config_manager import ConfigManager
 from gateway_manager.core.model_manager import ModelManager
 from gateway_manager.core.gateway_manager import GatewayManager
 from gateway_manager.api.routes import router, init_managers
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
 
 _base_dir = os.path.dirname(os.path.abspath(__file__))
 
