@@ -72,9 +72,6 @@ class GatewayConfig(BaseModel):
 
 class AppConfig(BaseModel):
     sglang_image: str = Field(default="lmsysorg/sglang:v0.5.10", description="SGLang默认镜像")
-    vllm_image: str = Field(default="vllm/vllm:v0.3.0", description="vLLM默认镜像")
-    tabby_image: str = Field(default="ghcr.io/tabby/tabby:latest", description="Tabby默认镜像")
-    lmdeploy_image: str = Field(default="openmmlab/lmdeploy:latest", description="LMDeploy默认镜像")
-    openvino_image: str = Field(default="openvino/ovms:latest", description="OpenVINO默认镜像")
+    vllm_image: str = Field(default="vllm/vllm-openai:v0.19.0", description="vLLM默认镜像")
     gateway_image: str = Field(default="lmsysorg/sgl-model-gateway:v0.3.2", description="Gateway默认镜像")
     config_file: str = Field(default="config.yaml", description="配置文件路径")

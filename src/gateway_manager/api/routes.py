@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from gateway_manager.core.model_manager import ModelManager
 from gateway_manager.core.gateway_manager import GatewayManager
 from gateway_manager.core.config_manager import ConfigManager
+from gateway_manager.core.constants import DEFAULT_IMAGES
 from gateway_manager.models.schemas import (
     InferenceBackendType,
     LoadBalancingPolicy,
@@ -276,17 +277,24 @@ async def get_gateway_logs(tail: int = 100):
     return {"logs": logs}
 
 
+@router.get("/api/config/backends")
+async def get_backends():
+    return {
+        "backends": [
+            {"value": "sglang", "label": "SGLang"},
+            {"value": "vllm", "label": "vLLM"},
+        ]
+    }
+
+
 @router.get("/api/config/images")
 async def get_images():
     if config_manager is None:
         raise HTTPException(status_code=500, detail="Config manager not initialized")
 
     return {
-        "sglang_image": config_manager.get("images.sglang_image", "lmsysorg/sglang:v0.5.10"),
-        "vllm_image": config_manager.get("images.vllm_image", "vllm/vllm:v0.3.0"),
-        "tabby_image": config_manager.get("images.tabby_image", "ghcr.io/tabby/tabby:latest"),
-        "lmdeploy_image": config_manager.get("images.lmdeploy_image", "openmmlab/lmdeploy:latest"),
-        "openvino_image": config_manager.get("images.openvino_image", "openvino/ovms:latest"),
+        "sglang_image": config_manager.get("images.sglang_image", DEFAULT_IMAGES["sglang"]),
+        "vllm_image": config_manager.get("images.vllm_image", DEFAULT_IMAGES["vllm"]),
         "gateway_image": config_manager.get("images.gateway_image", "lmsysorg/sgl-model-gateway:v0.3.2"),
     }
 

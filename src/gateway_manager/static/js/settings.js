@@ -3,22 +3,25 @@ async function loadSettings() {
         const imagesData = await API.getImages();
         const dockerInfo = await API.getDockerInfo();
 
-        document.getElementById('sglang-image').value = imagesData.sglang_image;
-        document.getElementById('vllm-image').value = imagesData.vllm_image;
-        document.getElementById('tabby-image').value = imagesData.tabby_image;
-        document.getElementById('lmdeploy-image').value = imagesData.lmdeploy_image;
-        document.getElementById('openvino-image').value = imagesData.openvino_image;
-        document.getElementById('gateway-image').value = imagesData.gateway_image;
+        const sglangImageEl = document.getElementById('sglang-image');
+        const vllmImageEl = document.getElementById('vllm-image');
+        const gatewayImageEl = document.getElementById('gateway-image');
+
+        if (sglangImageEl) sglangImageEl.value = imagesData.sglang_image || '';
+        if (vllmImageEl) vllmImageEl.value = imagesData.vllm_image || '';
+        if (gatewayImageEl) gatewayImageEl.value = imagesData.gateway_image || '';
 
         const dockerInfoEl = document.getElementById('docker-info');
-        dockerInfoEl.innerHTML = `
-            <p><span class="info-label">运行中的容器:</span> ${dockerInfo.containers_running || 0}</p>
-            <p><span class="info-label">总容器数:</span> ${dockerInfo.containers_total || 0}</p>
-            <p><span class="info-label">镜像数:</span> ${dockerInfo.images_total || 0}</p>
-            <p><span class="info-label">存储驱动:</span> ${dockerInfo.driver || 'N/A'}</p>
-            <p><span class="info-label">NVIDIA版本:</span> ${dockerInfo.nvidia_version || 'N/A'}</p>
-            <p><span class="info-label">总内存:</span> ${formatBytes(dockerInfo.memory_total || 0)}</p>
-        `;
+        if (dockerInfoEl) {
+            dockerInfoEl.innerHTML = `
+                <p><span class="info-label">运行中的容器:</span> ${dockerInfo.containers_running || 0}</p>
+                <p><span class="info-label">总容器数:</span> ${dockerInfo.containers_total || 0}</p>
+                <p><span class="info-label">镜像数:</span> ${dockerInfo.images_total || 0}</p>
+                <p><span class="info-label">存储驱动:</span> ${dockerInfo.driver || 'N/A'}</p>
+                <p><span class="info-label">NVIDIA版本:</span> ${dockerInfo.nvidia_version || 'N/A'}</p>
+                <p><span class="info-label">总内存:</span> ${formatBytes(dockerInfo.memory_total || 0)}</p>
+            `;
+        }
 
     } catch (error) {
         console.error('Failed to load settings:', error);

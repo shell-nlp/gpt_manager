@@ -48,12 +48,7 @@
 
                 <div class="form-group">
                     <label for="backend-type">后端类型</label>
-                    <select id="backend-type" name="backend_type" required onchange="updateFormFields()">
-                        <option value="sglang">SGLang</option>
-                        <option value="vllm">vLLM</option>
-                        <option value="lmdeploy">LMDeploy</option>
-                        <option value="tabby">Tabby</option>
-                        <option value="openvino">OpenVINO</option>
+                    <select id="backend-type" name="backend_type" required>
                     </select>
                 </div>
 
@@ -87,11 +82,6 @@
                         <label for="gpu-ids">GPU IDs (逗号分隔)</label>
                         <input type="text" id="gpu-ids" name="gpu_ids" placeholder="0,1,2,3">
                     </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="model-image">Docker 镜像</label>
-                    <input type="text" id="model-image" name="image" placeholder="留空使用默认镜像">
                 </div>
 
                 <div class="form-actions">

@@ -7,6 +7,7 @@ from gateway_manager.models.schemas import (
     SGLangConfig,
     VLLMConfig,
 )
+from gateway_manager.core.constants import DEFAULT_IMAGES
 
 
 class BaseBackendManager(ABC):
@@ -38,7 +39,7 @@ class BaseBackendManager(ABC):
 
 
 class SGLangManager(BaseBackendManager):
-    def __init__(self, config: SGLangConfig, image: str = "lmsysorg/sglang:v0.5.10"):
+    def __init__(self, config: SGLangConfig, image: str = DEFAULT_IMAGES["sglang"]):
         super().__init__(config, image)
         self.sglang_config = config
 
@@ -83,7 +84,7 @@ class SGLangManager(BaseBackendManager):
 
 
 class VLLMManager(BaseBackendManager):
-    def __init__(self, config: VLLMConfig, image: str = "vllm/vllm:v0.3.0"):
+    def __init__(self, config: VLLMConfig, image: str = DEFAULT_IMAGES["vllm"]):
         super().__init__(config, image)
         self.vllm_config = config
 
@@ -131,11 +132,6 @@ class BackendManagerFactory:
         InferenceBackendType.VLLM: VLLMManager,
     }
 
-    _default_images: Dict[InferenceBackendType, str] = {
-        InferenceBackendType.SGLANG: "lmsysorg/sglang:v0.5.10",
-        InferenceBackendType.VLLM: "vllm/vllm:v0.3.0",
-    }
-
     @classmethod
     def create_manager(
         cls,
@@ -147,5 +143,5 @@ class BackendManagerFactory:
         if manager_class is None:
             raise ValueError(f"不支持的后端类型: {backend_type}")
 
-        final_image = image or cls._default_images.get(backend_type, "lmsysorg/sglang:v0.5.10")
+        final_image = image or DEFAULT_IMAGES.get(backend_type.value, DEFAULT_IMAGES["sglang"])
         return manager_class(config, final_image)

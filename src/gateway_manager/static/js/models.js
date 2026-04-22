@@ -1,4 +1,39 @@
 let currentModelId = null;
+console.log('models.js loaded');
+
+async function loadBackendTypes() {
+    try {
+        const select = document.getElementById('backend-type');
+        if (!select) {
+            console.error('backend-type select not found');
+            return;
+        }
+        console.log('Loading backend types...');
+        const data = await API.getBackends();
+        console.log('Backend types received:', data);
+        select.innerHTML = '';
+        for (const backend of data.backends) {
+            const option = document.createElement('option');
+            option.value = backend.value;
+            option.textContent = backend.label;
+            select.appendChild(option);
+        }
+        console.log('Backend types loaded successfully');
+    } catch (error) {
+        console.error('Failed to load backend types:', error);
+    }
+}
+
+function initPage() {
+    loadBackendTypes();
+    loadModels();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPage);
+} else {
+    initPage();
+}
 
 async function loadModels() {
     try {
@@ -82,7 +117,6 @@ async function deleteModel(id) {
     }
 
     try {
-        showNotification('正在删除模型...', 'info');
         await API.deleteModel(id);
         showNotification('模型已删除', 'success');
         loadModels();
@@ -177,18 +211,7 @@ function showCreateModelModal() {
 }
 
 async function updateFormFields() {
-    const backendType = document.getElementById('backend-type').value;
-    const imageInput = document.getElementById('model-image');
-
-    const defaultImages = {
-        'sglang': 'lmsysorg/sglang:v0.5.10',
-        'vllm': 'vllm/vllm:v0.3.0',
-        'lmdeploy': 'openmmlab/lmdeploy:latest',
-        'tabby': 'ghcr.io/tabby/tabby:latest',
-        'openvino': 'openvino/ovms:latest'
-    };
-
-    imageInput.placeholder = defaultImages[backendType] || '';
+    // This function is kept for future use if needed
 }
 
 document.getElementById('create-model-form').addEventListener('submit', async (e) => {
@@ -205,7 +228,6 @@ document.getElementById('create-model-form').addEventListener('submit', async (e
         host: formData.get('host'),
         port: parseInt(formData.get('port')),
         tensor_parallel: parseInt(formData.get('tensor_parallel')),
-        image: formData.get('image') || undefined,
     };
 
     if (gpuIdsStr) {
@@ -282,6 +304,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     `;
     document.head.appendChild(style);
-
-    loadModels();
 });

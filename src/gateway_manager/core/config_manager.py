@@ -3,6 +3,8 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 from loguru import logger
 
+from gateway_manager.core.constants import DEFAULT_IMAGES
+
 
 class ConfigManager:
     def __init__(self, config_file: str = "gateway_config.json"):
@@ -52,11 +54,8 @@ class ConfigManager:
     def _get_default_config(self) -> Dict[str, Any]:
         return {
             "images": {
-                "sglang_image": "lmsysorg/sglang:v0.5.10",
-                "vllm_image": "vllm/vllm:v0.3.0",
-                "tabby_image": "ghcr.io/tabby/tabby:latest",
-                "lmdeploy_image": "openmmlab/lmdeploy:latest",
-                "openvino_image": "openvino/ovms:latest",
+                "sglang_image": DEFAULT_IMAGES["sglang"],
+                "vllm_image": DEFAULT_IMAGES["vllm"],
                 "gateway_image": "lmsysorg/sgl-model-gateway:v0.3.2",
             },
             "models": [],

@@ -204,8 +204,8 @@ class DockerManager:
     def remove_container(self, name: str, force: bool = False) -> bool:
         try:
             if not self.container_exists(name):
-                logger.error(f"容器 {name} 不存在")
-                return False
+                logger.info(f"容器 {name} 不存在，视为已删除")
+                return True
 
             self.stop_container(name)
             args = ["docker", "rm"]

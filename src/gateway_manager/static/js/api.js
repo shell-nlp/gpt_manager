@@ -73,6 +73,8 @@ const API = {
 
     getImages: () => apiRequest('/api/config/images'),
 
+    getBackends: () => apiRequest('/api/config/backends'),
+
     updateImages: (data) => apiRequest('/api/config/images', {
         method: 'PATCH',
         body: JSON.stringify(data),

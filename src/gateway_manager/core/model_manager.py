@@ -14,6 +14,7 @@ from gateway_manager.models.schemas import (
 from gateway_manager.core.docker_manager import DockerManager
 from gateway_manager.core.backend_manager import BackendManagerFactory
 from gateway_manager.core.config_manager import ConfigManager
+from gateway_manager.core.constants import DEFAULT_IMAGES
 
 
 class ModelManager:
@@ -122,14 +123,12 @@ class ModelManager:
 
         if backend_type == InferenceBackendType.SGLANG:
             config = SGLangConfig(**base_config.model_dump(), **{k: v for k, v in kwargs.items() if v is not None})
+        elif backend_type == InferenceBackendType.VLLM:
+            config = VLLMConfig(**base_config.model_dump(), **{k: v for k, v in kwargs.items() if v is not None})
         else:
             config = base_config
 
-        default_images = {
-            InferenceBackendType.SGLANG: self.config_manager.get("images.sglang_image", "lmsysorg/sglang:v0.5.10"),
-            InferenceBackendType.VLLM: self.config_manager.get("images.vllm_image", "vllm/vllm:v0.3.0"),
-        }
-        final_image = image or default_images.get(backend_type, "lmsysorg/sglang:v0.5.10")
+        final_image = image or self.config_manager.get(f"images.{backend_type.value}_image", DEFAULT_IMAGES.get(backend_type.value))
 
         model = ModelInstance(
             id=model_id,
@@ -213,13 +212,11 @@ class ModelManager:
             return False
 
         self.docker_manager.stop_container(model.container_name)
-        if self.docker_manager.remove_container(model.container_name, force=force):
-            del self.models[model_id]
-            self._save_models_to_config()
-            logger.info(f"模型 {model.name} 删除成功")
-            return True
-
-        return False
+        self.docker_manager.remove_container(model.container_name, force=force)
+        del self.models[model_id]
+        self._save_models_to_config()
+        logger.info(f"模型 {model.name} 删除成功")
+        return True
 
     def get_model(self, model_id: str) -> Optional[ModelInstance]:
         model = self.models.get(model_id)
