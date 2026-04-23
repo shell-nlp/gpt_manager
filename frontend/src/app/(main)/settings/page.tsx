@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { API, Images, DockerInfo } from '@/lib/api';
-import { Settings as SettingsIcon, Image, HardDrive, Cpu, Info, Save, RotateCcw, Box, Monitor, Package, Database, Gauge, CheckCircle2, AlertCircle, Server, Cpu as CpuIcon } from 'lucide-react';
+import { API, Images, DockerInfo, ImageStatus } from '@/lib/api';
+import { Settings as SettingsIcon, Image, HardDrive, Cpu, Info, Save, RotateCcw, Box, Monitor, Package, Database, Gauge, CheckCircle2, AlertCircle, Server, Cpu as CpuIcon, Download, Loader2 } from 'lucide-react';
 
 function GlassCard({ children, highlight, accentColor = 'var(--blue)' }: { children: React.ReactNode; highlight?: boolean; accentColor?: string }) {
   return (
@@ -36,13 +36,16 @@ function GlassCard({ children, highlight, accentColor = 'var(--blue)' }: { child
   );
 }
 
-function ImageInputCard({ label, value, onChange, icon: Icon, color, description }: {
+function ImageInputCard({ label, value, onChange, icon: Icon, color, description, isPulled, onPull, pulling }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   icon: any;
   color: string;
   description?: string;
+  isPulled?: boolean;
+  onPull?: () => void;
+  pulling?: boolean;
 }) {
   const [isFocused, setIsFocused] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -91,51 +94,102 @@ function ImageInputCard({ label, value, onChange, icon: Icon, color, description
             已复制
           </span>
         )}
-      </div>
-      <div style={{ position: 'relative' }}>
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          onClick={(e) => (e.target as HTMLInputElement).select()}
-          style={{
-            width: '100%',
-            padding: '0.875rem 3rem 0.875rem 1rem',
-            background: 'var(--bg-secondary)',
-            border: `1.5px solid ${isFocused ? color : 'var(--border-subtle)'}`,
-            borderRadius: 'var(--radius-md)',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '0.85rem',
-            color: 'var(--text-primary)',
-            outline: 'none',
-            transition: 'all var(--transition-fast)',
-            boxShadow: isFocused ? `0 0 0 3px ${color}15` : 'none',
-          }}
-          placeholder="请输入镜像地址..."
-        />
-        <button
-          onClick={handleCopy}
-          className="copy-btn"
-          style={{
-            position: 'absolute',
-            right: '8px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            background: 'var(--bg-tertiary)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-sm)',
+        {isPulled !== undefined && (
+          <span style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.375rem',
             padding: '0.375rem 0.75rem',
-            cursor: 'pointer',
-            color: 'var(--text-secondary)',
-            fontSize: '0.75rem',
-            fontWeight: 500,
-            transition: 'all var(--transition-fast)',
-          }}
-        >
-          复制
-        </button>
+            background: isPulled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+            borderRadius: 'var(--radius-sm)',
+            border: `1px solid ${isPulled ? 'var(--emerald)' : 'var(--amber)'}`,
+          }}>
+            {isPulled ? (
+              <>
+                <CheckCircle2 size={14} style={{ color: 'var(--emerald)' }} />
+                <span style={{ fontSize: '0.7rem', color: 'var(--emerald)', fontWeight: 500 }}>已拉取</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle size={14} style={{ color: 'var(--amber)' }} />
+                <span style={{ fontSize: '0.7rem', color: 'var(--amber)', fontWeight: 500 }}>未拉取</span>
+              </>
+            )}
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onClick={(e) => (e.target as HTMLInputElement).select()}
+            style={{
+              width: '100%',
+              padding: '0.875rem 3rem 0.875rem 1rem',
+              background: 'var(--bg-secondary)',
+              border: `1.5px solid ${isFocused ? color : 'var(--border-subtle)'}`,
+              borderRadius: 'var(--radius-md)',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.85rem',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              transition: 'all var(--transition-fast)',
+              boxShadow: isFocused ? `0 0 0 3px ${color}15` : 'none',
+            }}
+            placeholder="请输入镜像地址..."
+          />
+          <button
+            onClick={handleCopy}
+            className="copy-btn"
+            style={{
+              position: 'absolute',
+              right: '8px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.375rem 0.75rem',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              transition: 'all var(--transition-fast)',
+            }}
+          >
+            复制
+          </button>
+        </div>
+        {onPull && (
+          <button
+            onClick={onPull}
+            disabled={pulling || isPulled}
+            className={isPulled ? 'btn' : 'btn btn-primary'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.875rem 1rem',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {pulling ? (
+              <>
+                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                拉取中...
+              </>
+            ) : (
+              <>
+                <Download size={14} />
+                拉取镜像
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -276,35 +330,105 @@ function formatBytes(bytes: number): string {
 
 export default function SettingsPage() {
   const [images, setImages] = useState<Images | null>(null);
+  const [imageStatus, setImageStatus] = useState<ImageStatus | null>(null);
   const [dockerInfo, setDockerInfo] = useState<DockerInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [pullingTasks, setPullingTasks] = useState<Record<string, { taskId: string; status: string; progress: string }>>({});
 
   const [formData, setFormData] = useState({
     sglang_image: '',
     vllm_image: '',
     gateway_image: '',
+    pull_registry: '',
   });
 
   useEffect(() => {
     loadData();
+    restorePullingTasks();
   }, []);
+
+  async function restorePullingTasks() {
+    try {
+      const { tasks } = await API.listPullTasks();
+      if (tasks && tasks.length > 0) {
+        const restored: Record<string, { taskId: string; status: string; progress: string }> = {};
+        for (const task of tasks) {
+          restored[task.image] = {
+            taskId: task.id,
+            status: task.status,
+            progress: task.progress,
+          };
+        }
+        setPullingTasks(restored);
+      }
+    } catch (err) {
+      console.error('Failed to restore pulling tasks:', err);
+    }
+  }
+
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      if (Object.keys(pullingTasks).length === 0) return;
+
+      const updatedTasks = { ...pullingTasks };
+      let hasChanges = false;
+
+      for (const [image, task] of Object.entries(pullingTasks)) {
+        if (task.status === 'pulling' || task.status === 'pending') {
+          try {
+            const status = await API.getPullTaskStatus(task.taskId);
+            if (status.status !== task.status || status.progress !== task.progress) {
+              updatedTasks[image] = {
+                taskId: task.taskId,
+                status: status.status,
+                progress: status.progress,
+              };
+              hasChanges = true;
+            }
+            if (status.status === 'completed' || status.status === 'failed') {
+              setTimeout(() => {
+                loadData();
+                setPullingTasks(prev => {
+                  const next = { ...prev };
+                  delete next[image];
+                  return next;
+                });
+              }, 1000);
+            }
+          } catch (err) {
+            console.error('Failed to poll task status:', err);
+          }
+        }
+      }
+
+      if (hasChanges) {
+        setPullingTasks(updatedTasks);
+      }
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [pullingTasks]);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [imagesData, dockerData] = await Promise.all([
+      const [imagesData, dockerData, statusData, dockerConfigData] = await Promise.all([
         API.getImages(),
         API.getDockerInfo(),
+        API.getImageStatus(),
+        API.getDockerConfig(),
       ]);
       setImages(imagesData);
       setDockerInfo(dockerData);
+      setImageStatus(statusData);
       setFormData({
         sglang_image: imagesData.sglang_image,
         vllm_image: imagesData.vllm_image,
         gateway_image: imagesData.gateway_image,
+        pull_registry: dockerConfigData.pull_registry || '',
       });
     } catch (err: any) {
       setError(err.message);
@@ -313,15 +437,32 @@ export default function SettingsPage() {
     }
   }
 
+  async function handlePullImage(image: string) {
+    try {
+      const result = await API.pullImage(image);
+      setPullingTasks(prev => ({
+        ...prev,
+        [image]: { taskId: result.task_id, status: 'pulling', progress: '开始拉取...' },
+      }));
+    } catch (err: any) {
+      alert('拉取镜像失败: ' + err.message);
+    }
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      await API.updateImages({
-        sglang_image: formData.sglang_image,
-        vllm_image: formData.vllm_image,
-        gateway_image: formData.gateway_image,
-      });
+      await Promise.all([
+        API.updateImages({
+          sglang_image: formData.sglang_image,
+          vllm_image: formData.vllm_image,
+          gateway_image: formData.gateway_image,
+        }),
+        API.updateDockerConfig({
+          pull_registry: formData.pull_registry,
+        }),
+      ]);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       loadData();
@@ -433,6 +574,9 @@ export default function SettingsPage() {
               icon={Box}
               color="var(--blue)"
               description="用于启动 SGLang 推理服务"
+              isPulled={imageStatus?.sglang_image_pulled}
+              onPull={() => handlePullImage(formData.sglang_image)}
+              pulling={!!pullingTasks[formData.sglang_image]}
             />
             <ImageInputCard
               label="vLLM 镜像"
@@ -441,6 +585,9 @@ export default function SettingsPage() {
               icon={Database}
               color="var(--emerald)"
               description="用于启动 vLLM 推理服务"
+              isPulled={imageStatus?.vllm_image_pulled}
+              onPull={() => handlePullImage(formData.vllm_image)}
+              pulling={!!pullingTasks[formData.vllm_image]}
             />
             <ImageInputCard
               label="Gateway 镜像"
@@ -449,7 +596,71 @@ export default function SettingsPage() {
               icon={SettingsIcon}
               color="var(--violet)"
               description="用于启动 SGL-Model-Gateway"
+              isPulled={imageStatus?.gateway_image_pulled}
+              onPull={() => handlePullImage(formData.gateway_image)}
+              pulling={!!pullingTasks[formData.gateway_image]}
             />
+          </div>
+
+          <div style={{
+            marginTop: '1.5rem',
+            padding: '1.25rem',
+            background: 'var(--bg-tertiary)',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid var(--border-subtle)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.75rem' }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, var(--violet) 0%, var(--purple) 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <Download size={18} color="white" />
+              </div>
+              <div>
+                <label style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>拉取镜像源</label>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>配置镜像拉取的代理/镜像源</p>
+              </div>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={formData.pull_registry}
+                onChange={(e) => setFormData({ ...formData, pull_registry: e.target.value })}
+                placeholder="例如: docker.1ms.run"
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  paddingLeft: '2.75rem',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  transition: 'all var(--transition-fast)',
+                }}
+                onFocus={(e) => e.target.style.borderColor = 'var(--violet)'}
+                onBlur={(e) => e.target.style.borderColor = 'var(--border-subtle)'}
+              />
+              <span style={{
+                position: 'absolute',
+                left: '0.875rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+                fontSize: '0.9rem',
+              }}>
+                /
+              </span>
+            </div>
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+              配置后将使用 <code style={{ background: 'var(--bg-secondary)', padding: '0.125rem 0.375rem', borderRadius: '4px' }}>{formData.pull_registry || '镜像源'}/镜像名</code> 格式拉取镜像
+            </p>
           </div>
 
           <InfoBanner message="镜像配置修改后，新启动的模型服务将使用新的镜像地址。正在运行的服务不受影响。" />

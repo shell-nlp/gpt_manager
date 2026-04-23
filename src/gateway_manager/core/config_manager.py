@@ -1,6 +1,7 @@
 import json
-from typing import Dict, Any, Optional
 from pathlib import Path
+from typing import Any, Dict, Optional
+
 from loguru import logger
 
 from gateway_manager.core.constants import DEFAULT_IMAGES
@@ -57,6 +58,9 @@ class ConfigManager:
                 "sglang_image": DEFAULT_IMAGES["sglang"],
                 "vllm_image": DEFAULT_IMAGES["vllm"],
                 "gateway_image": "lmsysorg/sgl-model-gateway:v0.3.2",
+            },
+            "docker": {
+                "pull_registry": "",
             },
             "models": [],
             "gateway": {

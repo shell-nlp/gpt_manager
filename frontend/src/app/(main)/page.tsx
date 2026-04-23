@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { API, DockerInfo } from '@/lib/api';
-import { Container, Image, HardDrive, Cpu, Activity, Server, Zap, Clock, RefreshCw, Sparkles, ArrowRight } from 'lucide-react';
+import { API, DockerInfo, ImageStatus } from '@/lib/api';
+import { Container, Image, HardDrive, Cpu, Activity, Server, Zap, Clock, RefreshCw, Sparkles, ArrowRight, CheckCircle2, AlertCircle, Download, Loader2, Box, Database, Settings as SettingsIcon } from 'lucide-react';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -106,28 +106,236 @@ function StatCard({ icon: Icon, label, value, subValue, color, accent, delay }: 
   );
 }
 
+function DefaultImageCard({ name, image, isPulled, pullingTasks, onPull, color }: {
+  name: string;
+  image: string;
+  isPulled?: boolean;
+  pullingTasks?: Record<string, { status: string; progress: string }>;
+  onPull?: () => void;
+  color: string;
+}) {
+  const task = pullingTasks?.[image];
+  const isPulling = !!task;
+  const progress = task?.progress || '';
+
+  return (
+    <div style={{
+      padding: '1.25rem',
+      background: 'var(--bg-tertiary)',
+      borderRadius: 'var(--radius-lg)',
+      border: `1px solid ${isPulled ? 'var(--border-subtle)' : 'var(--amber)'}40`,
+      transition: 'all var(--transition-base)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '10px',
+            background: `linear-gradient(135deg, ${color} 0%, ${color}88 100%)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            {name === 'SGLang' && <Box size={18} color="white" />}
+            {name === 'vLLM' && <Database size={18} color="white" />}
+            {name === 'Gateway' && <SettingsIcon size={18} color="white" />}
+          </div>
+          <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{name} 镜像</span>
+        </div>
+        <span style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.375rem',
+          padding: '0.25rem 0.625rem',
+          background: isPulled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+          borderRadius: '100px',
+          border: `1px solid ${isPulled ? 'var(--emerald)' : 'var(--amber)'}`,
+        }}>
+          {isPulled ? (
+            <>
+              <CheckCircle2 size={12} style={{ color: 'var(--emerald)' }} />
+              <span style={{ fontSize: '0.7rem', color: 'var(--emerald)', fontWeight: 500 }}>已拉取</span>
+            </>
+          ) : (
+            <>
+              <AlertCircle size={12} style={{ color: 'var(--amber)' }} />
+              <span style={{ fontSize: '0.7rem', color: 'var(--amber)', fontWeight: 500 }}>未拉取</span>
+            </>
+          )}
+        </span>
+      </div>
+      <p style={{
+        fontSize: '0.75rem',
+        color: 'var(--text-muted)',
+        fontFamily: 'JetBrains Mono, monospace',
+        marginBottom: '0.5rem',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {image}
+      </p>
+      {isPulling && (
+        <p style={{
+          fontSize: '0.7rem',
+          color: 'var(--blue)',
+          marginBottom: '0.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.375rem',
+        }}>
+          <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+          {progress || '拉取中...'}
+        </p>
+      )}
+      <button
+        onClick={onPull}
+        disabled={isPulling || isPulled || !image}
+        className={isPulled ? 'btn' : 'btn btn-primary'}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          width: '100%',
+          padding: '0.625rem 1rem',
+        }}
+      >
+        {isPulling ? (
+          <>
+            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+            拉取中...
+          </>
+        ) : isPulled ? (
+          '已就绪'
+        ) : (
+          <>
+            <Download size={14} />
+            拉取镜像
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [dockerInfo, setDockerInfo] = useState<DockerInfo | null>(null);
+  const [imageStatus, setImageStatus] = useState<ImageStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [pullingTasks, setPullingTasks] = useState<Record<string, { taskId: string; status: string; progress: string }>>({});
 
   useEffect(() => {
     loadData();
+    restorePullingTasks();
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, []);
 
+  async function restorePullingTasks() {
+    try {
+      const { tasks } = await API.listPullTasks();
+      if (tasks && tasks.length > 0) {
+        const restored: Record<string, { taskId: string; status: string; progress: string }> = {};
+        for (const task of tasks) {
+          restored[task.image] = {
+            taskId: task.id,
+            status: task.status,
+            progress: task.progress,
+          };
+        }
+        setPullingTasks(restored);
+      }
+    } catch (err) {
+      console.error('Failed to restore pulling tasks:', err);
+    }
+  }
+
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      if (Object.keys(pullingTasks).length === 0) return;
+
+      const updatedTasks = { ...pullingTasks };
+      let hasChanges = false;
+
+      for (const [image, task] of Object.entries(pullingTasks)) {
+        if (task.status === 'pulling' || task.status === 'pending') {
+          try {
+            const status = await API.getPullTaskStatus(task.taskId);
+            if (status.status !== task.status || status.progress !== task.progress) {
+              updatedTasks[image] = {
+                taskId: task.taskId,
+                status: status.status,
+                progress: status.progress,
+              };
+              hasChanges = true;
+            }
+            if (status.status === 'completed' || status.status === 'failed') {
+              setTimeout(() => {
+                loadData();
+                setPullingTasks(prev => {
+                  const next = { ...prev };
+                  delete next[image];
+                  return next;
+                });
+              }, 1000);
+            }
+          } catch (err) {
+            console.error('Failed to poll task status:', err);
+          }
+        }
+      }
+
+      if (hasChanges) {
+        setPullingTasks(updatedTasks);
+      }
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [pullingTasks]);
+
   async function loadData() {
     try {
-      const data = await API.getDockerInfo();
-      setDockerInfo(data);
+      const [dockerData, statusData] = await Promise.all([
+        API.getDockerInfo(),
+        API.getImageStatus(),
+      ]);
+      setDockerInfo(dockerData);
+      setImageStatus(statusData);
       setLastUpdate(new Date());
       setError('');
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handlePullImage(image: string) {
+    try {
+      const result = await API.pullImage(image);
+      setPullingTasks(prev => ({
+        ...prev,
+        [image]: { taskId: result.task_id, status: 'pulling', progress: '开始拉取...' },
+      }));
+    } catch (err: any) {
+      alert('拉取镜像失败: ' + err.message);
+    }
+  }
+
+  async function handlePullAll() {
+    if (!imageStatus) return;
+    if (!imageStatus.sglang_image_pulled && imageStatus.sglang_image) {
+      await handlePullImage(imageStatus.sglang_image);
+    }
+    if (!imageStatus.vllm_image_pulled && imageStatus.vllm_image) {
+      await handlePullImage(imageStatus.vllm_image);
+    }
+    if (!imageStatus.gateway_image_pulled && imageStatus.gateway_image) {
+      await handlePullImage(imageStatus.gateway_image);
     }
   }
 
@@ -407,6 +615,106 @@ export default function HomePage() {
               </p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="card animate-fade-in-up" style={{
+        marginTop: '2rem',
+        animationDelay: '500ms',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '3px',
+          background: 'linear-gradient(90deg, var(--blue) 0%, var(--cyan) 100%)',
+        }} />
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: '200px',
+          height: '200px',
+          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.06) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', position: 'relative' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '14px',
+            background: 'linear-gradient(135deg, var(--blue) 0%, var(--cyan) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)',
+          }}>
+            <Box size={22} color="white" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '0.25rem' }}>默认镜像状态</h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>检查并拉取必要的 Docker 镜像</p>
+          </div>
+          {!imageStatus?.sglang_image_pulled || !imageStatus?.vllm_image_pulled || !imageStatus?.gateway_image_pulled ? (
+            <button
+              onClick={handlePullAll}
+              disabled={Object.keys(pullingTasks).length > 0}
+              className="btn btn-primary"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.625rem 1.25rem',
+              }}
+            >
+              {Object.keys(pullingTasks).length > 0 ? (
+                <>
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  拉取中...
+                </>
+              ) : (
+                <>
+                  <Download size={14} />
+                  一键拉取全部
+                </>
+              )}
+            </button>
+          ) : null}
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '1rem',
+        }}>
+          <DefaultImageCard
+            name="SGLang"
+            image={imageStatus?.sglang_image || ''}
+            isPulled={imageStatus?.sglang_image_pulled}
+            pullingTasks={pullingTasks}
+            onPull={() => imageStatus?.sglang_image && handlePullImage(imageStatus.sglang_image)}
+            color="var(--blue)"
+          />
+          <DefaultImageCard
+            name="vLLM"
+            image={imageStatus?.vllm_image || ''}
+            isPulled={imageStatus?.vllm_image_pulled}
+            pullingTasks={pullingTasks}
+            onPull={() => imageStatus?.vllm_image && handlePullImage(imageStatus.vllm_image)}
+            color="var(--emerald)"
+          />
+          <DefaultImageCard
+            name="Gateway"
+            image={imageStatus?.gateway_image || ''}
+            isPulled={imageStatus?.gateway_image_pulled}
+            pullingTasks={pullingTasks}
+            onPull={() => imageStatus?.gateway_image && handlePullImage(imageStatus.gateway_image)}
+            color="var(--violet)"
+          />
         </div>
       </div>
 

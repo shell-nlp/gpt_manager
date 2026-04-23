@@ -1,11 +1,16 @@
+import threading
+import uuid
+from datetime import datetime
+from enum import Enum
+from typing import Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException
-from typing import List, Optional
 from pydantic import BaseModel
 
-from gateway_manager.core.model_manager import ModelManager
-from gateway_manager.core.gateway_manager import GatewayManager
 from gateway_manager.core.config_manager import ConfigManager
 from gateway_manager.core.constants import DEFAULT_IMAGES
+from gateway_manager.core.gateway_manager import GatewayManager
+from gateway_manager.core.model_manager import ModelManager
 from gateway_manager.models.schemas import (
     InferenceBackendType,
     LoadBalancingPolicy,
@@ -16,6 +21,27 @@ router = APIRouter()
 model_manager: Optional[ModelManager] = None
 gateway_manager: Optional[GatewayManager] = None
 config_manager: Optional[ConfigManager] = None
+
+
+class PullTaskStatus(str, Enum):
+    PENDING = "pending"
+    PULLING = "pulling"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PullTask(BaseModel):
+    id: str
+    image: str
+    status: PullTaskStatus
+    progress: str = ""
+    error: Optional[str] = None
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+
+
+pull_tasks: Dict[str, PullTask] = {}
+pull_tasks_lock = threading.Lock()
 
 
 def init_managers(
@@ -60,6 +86,14 @@ class UpdateImagesRequest(BaseModel):
     lmdeploy_image: Optional[str] = None
     openvino_image: Optional[str] = None
     gateway_image: Optional[str] = None
+
+
+class DockerConfigResponse(BaseModel):
+    pull_registry: str
+
+
+class UpdateDockerConfigRequest(BaseModel):
+    pull_registry: Optional[str] = None
 
 
 @router.get("/api/docker/info")
@@ -318,6 +352,152 @@ async def update_images(req: UpdateImagesRequest):
         config_manager.set("images.gateway_image", req.gateway_image)
 
     return {"message": "Images updated successfully"}
+
+
+@router.get("/api/config/docker", response_model=DockerConfigResponse)
+async def get_docker_config():
+    if config_manager is None:
+        raise HTTPException(status_code=500, detail="Config manager not initialized")
+
+    return DockerConfigResponse(
+        pull_registry=config_manager.get("docker.pull_registry", ""),
+    )
+
+
+@router.patch("/api/config/docker")
+async def update_docker_config(req: UpdateDockerConfigRequest):
+    if config_manager is None:
+        raise HTTPException(status_code=500, detail="Config manager not initialized")
+
+    if req.pull_registry is not None:
+        config_manager.set("docker.pull_registry", req.pull_registry)
+
+    return {"message": "Docker config updated successfully"}
+
+
+class ImageStatusResponse(BaseModel):
+    sglang_image: str
+    sglang_image_pulled: bool
+    vllm_image: str
+    vllm_image_pulled: bool
+    gateway_image: str
+    gateway_image_pulled: bool
+
+
+@router.get("/api/config/images/status", response_model=ImageStatusResponse)
+async def get_images_status():
+    from gateway_manager.core.docker_manager import DockerManager
+    dm = DockerManager()
+
+    sglang_image = DEFAULT_IMAGES["sglang"]
+    vllm_image = DEFAULT_IMAGES["vllm"]
+    gateway_image = "lmsysorg/sgl-model-gateway:v0.3.2"
+
+    registry = ""
+    if config_manager is not None:
+        sglang_image = config_manager.get("images.sglang_image", sglang_image)
+        vllm_image = config_manager.get("images.vllm_image", vllm_image)
+        gateway_image = config_manager.get("images.gateway_image", gateway_image)
+        registry = config_manager.get("docker.pull_registry", "")
+
+    return ImageStatusResponse(
+        sglang_image=sglang_image,
+        sglang_image_pulled=dm.check_image_exists(sglang_image, registry),
+        vllm_image=vllm_image,
+        vllm_image_pulled=dm.check_image_exists(vllm_image, registry),
+        gateway_image=gateway_image,
+        gateway_image_pulled=dm.check_image_exists(gateway_image, registry),
+    )
+
+
+class PullImageRequest(BaseModel):
+    image: str
+
+
+@router.post("/api/images/pull")
+async def pull_image(req: PullImageRequest):
+    from gateway_manager.core.docker_manager import DockerManager
+
+    task_id = str(uuid.uuid4())
+    task = PullTask(
+        id=task_id,
+        image=req.image,
+        status=PullTaskStatus.PULLING,
+        progress="正在连接 Docker...",
+        started_at=datetime.now(),
+    )
+
+    with pull_tasks_lock:
+        pull_tasks[task_id] = task
+
+    def background_pull():
+        dm = DockerManager()
+        registry = ""
+        if config_manager is not None:
+            registry = config_manager.get("docker.pull_registry", "")
+
+        with pull_tasks_lock:
+            pull_tasks[task_id].status = PullTaskStatus.PULLING
+            if registry:
+                pull_tasks[task_id].progress = f"正在从 {registry} 拉取镜像..."
+            else:
+                pull_tasks[task_id].progress = "正在拉取镜像..."
+
+        success, message = dm.pull_image(req.image, registry=registry)
+
+        with pull_tasks_lock:
+            if success:
+                pull_tasks[task_id].status = PullTaskStatus.COMPLETED
+                pull_tasks[task_id].progress = "拉取完成"
+                pull_tasks[task_id].completed_at = datetime.now()
+            else:
+                pull_tasks[task_id].status = PullTaskStatus.FAILED
+                pull_tasks[task_id].error = message
+                pull_tasks[task_id].completed_at = datetime.now()
+
+    thread = threading.Thread(target=background_pull)
+    thread.daemon = True
+    thread.start()
+
+    return {"task_id": task_id, "message": "开始拉取镜像", "image": req.image}
+
+
+@router.get("/api/images/pull/{task_id}")
+async def get_pull_status(task_id: str):
+    with pull_tasks_lock:
+        task = pull_tasks.get(task_id)
+
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在或已过期")
+
+    return {
+        "id": task.id,
+        "image": task.image,
+        "status": task.status.value,
+        "progress": task.progress,
+        "error": task.error,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+
+
+@router.get("/api/images/pull")
+async def list_pull_tasks():
+    with pull_tasks_lock:
+        tasks = [
+            {
+                "id": t.id,
+                "image": t.image,
+                "status": t.status.value,
+                "progress": t.progress,
+                "error": t.error,
+                "started_at": t.started_at.isoformat() if t.started_at else None,
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+            }
+            for t in pull_tasks.values()
+            if t.status in (PullTaskStatus.PULLING, PullTaskStatus.PENDING)
+        ]
+    return {"tasks": tasks}
 
 
 @router.get("/api/worker-urls")

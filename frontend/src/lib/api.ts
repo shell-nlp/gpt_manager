@@ -40,6 +40,29 @@ export interface Images {
   gateway_image: string;
 }
 
+export interface DockerConfig {
+  pull_registry: string;
+}
+
+export interface ImageStatus {
+  sglang_image: string;
+  sglang_image_pulled: boolean;
+  vllm_image: string;
+  vllm_image_pulled: boolean;
+  gateway_image: string;
+  gateway_image_pulled: boolean;
+}
+
+export interface PullTask {
+  id: string;
+  image: string;
+  status: 'pending' | 'pulling' | 'completed' | 'failed';
+  progress: string;
+  error?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
 export interface Model {
   id: string;
   name: string;
@@ -78,8 +101,30 @@ export const API = {
 
   getImages: () => apiRequest<Images>('/config/images'),
 
+  getImageStatus: () => apiRequest<ImageStatus>('/config/images/status'),
+
+  pullImage: (image: string) =>
+    apiRequest<{ task_id: string; message: string; image: string }>('/images/pull', {
+      method: 'POST',
+      body: JSON.stringify({ image }),
+    }),
+
+  getPullTaskStatus: (taskId: string) =>
+    apiRequest<PullTask>(`/images/pull/${taskId}`),
+
+  listPullTasks: () =>
+    apiRequest<{ tasks: PullTask[] }>('/images/pull'),
+
   updateImages: (data: Partial<Images>) =>
     apiRequest('/config/images', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  getDockerConfig: () => apiRequest<DockerConfig>('/config/docker'),
+
+  updateDockerConfig: (data: Partial<DockerConfig>) =>
+    apiRequest('/config/docker', {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),

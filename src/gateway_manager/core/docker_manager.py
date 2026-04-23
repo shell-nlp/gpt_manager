@@ -1,6 +1,7 @@
-import subprocess
 import json
-from typing import Optional, Dict, Any, List
+import subprocess
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 from gateway_manager.models.schemas import ContainerStatus
@@ -255,3 +256,58 @@ class DockerManager:
         except Exception as e:
             logger.error(f"获取 Docker 信息失败: {e}")
             return {"error": str(e)}
+
+    def check_image_exists(self, image: str, registry: str = "") -> bool:
+        try:
+            result = self._run_command(["docker", "image", "inspect", image])
+            if result.returncode == 0:
+                return True
+            if registry:
+                result = self._run_command(["docker", "image", "inspect", f"{registry}/{image}"])
+                return result.returncode == 0
+            return False
+        except Exception:
+            return False
+
+    def pull_image(self, image: str, timeout: int = 600, registry: str = "") -> tuple[bool, str]:
+        pull_image_name = image
+        if registry:
+            pull_image_name = f"{registry}/{image}"
+        try:
+            logger.info(f"开始拉取镜像: {pull_image_name}")
+            result = self._run_command(["docker", "pull", pull_image_name], timeout=timeout)
+            if result.returncode == 0:
+                logger.info(f"镜像 {pull_image_name} 拉取成功")
+                return True, "Success"
+            else:
+                logger.error(f"镜像 {pull_image_name} 拉取失败: {result.stderr}")
+                return False, result.stderr
+        except Exception as e:
+            logger.error(f"拉取镜像 {pull_image_name} 失败: {e}")
+            return False, str(e)
+
+    def get_all_images(self) -> List[Dict[str, str]]:
+        try:
+            result = self._run_command([
+                "docker", "images", "--format",
+                "{{.Repository}}:{{.Tag}}|{{.ID}}|{{.Size}}"
+            ])
+            if result.returncode != 0:
+                return []
+
+            images = []
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split("|")
+                if len(parts) >= 3:
+                    images.append({
+                        "repository": parts[0],
+                        "tag": parts[1],
+                        "id": parts[2],
+                        "size": parts[3] if len(parts) > 3 else "unknown",
+                    })
+            return images
+        except Exception as e:
+            logger.error(f"获取镜像列表失败: {e}")
+            return []

@@ -13,5 +13,8 @@
         "worker_urls": [
             "http://localhost:8082"
         ]
+    },
+    "docker": {
+        "pull_registry": "docker.1ms.run"
     }
 }
