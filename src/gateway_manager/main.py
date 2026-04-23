@@ -1,9 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-from starlette.requests import Request
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from gateway_manager.core.config_manager import ConfigManager
@@ -12,12 +10,6 @@ from gateway_manager.core.gateway_manager import GatewayManager
 from gateway_manager.api.routes import router, init_managers
 
 _base_dir = os.path.dirname(os.path.abspath(__file__))
-
-
-def get_html(filename: str) -> str:
-    filepath = os.path.join(_base_dir, "templates", filename)
-    with open(filepath, "r", encoding="utf-8") as f:
-        return f.read()
 
 
 @asynccontextmanager
@@ -38,39 +30,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SGL-Model-Gateway Manager",
-    description="SGL-Model-Gateway 可视化管理界面",
+    description="SGL-Model-Gateway API",
     version="1.0.0",
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(router)
-
-static_dir = os.path.join(_base_dir, "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return HTMLResponse(content=get_html("index.html"))
-
-
-@app.get("/models", response_class=HTMLResponse)
-async def models_page(request: Request):
-    return HTMLResponse(content=get_html("models.html"))
-
-
-@app.get("/gateway", response_class=HTMLResponse)
-async def gateway_page(request: Request):
-    return HTMLResponse(content=get_html("gateway.html"))
-
-
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
-    return HTMLResponse(content=get_html("settings.html"))
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=18088)
+    uvicorn.run(app, host="0.0.0.0", port=28088)
