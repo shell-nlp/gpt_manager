@@ -255,42 +255,25 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    if (Object.keys(pullingTasks).length === 0) return;
+
     const pollInterval = setInterval(async () => {
-      if (Object.keys(pullingTasks).length === 0) return;
-
-      const updatedTasks = { ...pullingTasks };
-      let hasChanges = false;
-
       for (const [image, task] of Object.entries(pullingTasks)) {
         if (task.status === 'pulling' || task.status === 'pending') {
           try {
             const status = await API.getPullTaskStatus(task.taskId);
-            if (status.status !== task.status || status.progress !== task.progress) {
-              updatedTasks[image] = {
-                taskId: task.taskId,
-                status: status.status,
-                progress: status.progress,
-              };
-              hasChanges = true;
-            }
             if (status.status === 'completed' || status.status === 'failed') {
-              setTimeout(() => {
-                loadData();
-                setPullingTasks(prev => {
-                  const next = { ...prev };
-                  delete next[image];
-                  return next;
-                });
-              }, 1000);
+              setPullingTasks(prev => {
+                const next = { ...prev };
+                delete next[image];
+                return next;
+              });
+              loadData();
             }
           } catch (err) {
             console.error('Failed to poll task status:', err);
           }
         }
-      }
-
-      if (hasChanges) {
-        setPullingTasks(updatedTasks);
       }
     }, 2000);
 

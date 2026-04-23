@@ -1,7 +1,27 @@
 const API_BASE = '/api';
 
-async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const cache: Record<string, CacheEntry<any>> = {};
+const CACHE_TTL = 3000;
+
+function clearCache(): void {
+  Object.keys(cache).forEach(key => delete cache[key]);
+}
+
+async function apiRequest<T>(endpoint: string, options: RequestInit = {}, skipCache = false): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
+
+  if (!skipCache && options.method === undefined) {
+    const cached = cache[url];
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data as T;
+    }
+  }
+
   const config: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
@@ -15,6 +35,12 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
 
   if (!response.ok) {
     throw new Error(data.detail || 'Request failed');
+  }
+
+  if (options.method === undefined) {
+    cache[url] = { data, timestamp: Date.now() };
+  } else {
+    clearCache();
   }
 
   return data;
