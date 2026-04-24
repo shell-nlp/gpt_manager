@@ -289,12 +289,12 @@ class DockerManager:
     def _with_registry(self, image: str, registry: str) -> str:
         return f"{registry.rstrip('/')}/{image.lstrip('/')}"
 
-    def pull_image(self, image: str, timeout: int = 600, registry: str = "") -> tuple[bool, str]:
+    def pull_image(self, image: str, timeout: int = 60*60*12, registry: str = "") -> tuple[bool, str]:
         pull_image_name = image
         if registry:
             pull_image_name = self._with_registry(image, registry)
         try:
-            logger.info(f"开始拉取镜像: {pull_image_name}")
+            logger.info(f"开始拉取镜像: {pull_image_name} 超时时间: {timeout} 秒")
             result = self._run_command(["docker", "pull", pull_image_name], timeout=timeout)
             if result.returncode == 0:
                 logger.info(f"镜像 {pull_image_name} 拉取成功")
