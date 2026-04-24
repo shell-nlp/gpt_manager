@@ -123,6 +123,23 @@ export interface WorkerUrlStatus {
   models?: string[];
 }
 
+export interface RoutedWorker {
+  url: string;
+  models: string[];
+}
+
+export interface RoutedModel {
+  id: string;
+  workers: string[];
+}
+
+export interface GatewayRoutes {
+  gateway_url: string;
+  models: RoutedModel[];
+  workers: RoutedWorker[];
+  error?: string;
+}
+
 export const API = {
   getDockerInfo: () => apiRequest<DockerInfo>('/docker/info'),
 
@@ -202,6 +219,8 @@ export const API = {
 
   getGatewayLogs: (tail = 100) =>
     apiRequest<{ logs: string }>(`/gateway/logs?tail=${tail}`),
+
+  getGatewayRoutes: () => apiRequest<GatewayRoutes>('/gateway/routes'),
 
   getWorkerUrls: () => apiRequest<{ worker_urls: string[] }>('/worker-urls'),
 

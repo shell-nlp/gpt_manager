@@ -6,13 +6,13 @@
     },
     "models": [],
     "gateway": {
+        "worker_urls": [
+            "https://miyun.archermind.com"
+        ],
+        "policy": "cache_aware",
         "host": "0.0.0.0",
         "port": 8082,
-        "policy": "cache_aware",
-        "image": "lmsysorg/sgl-model-gateway:v0.3.2",
-        "worker_urls": [
-            "http://localhost:8082"
-        ]
+        "image": "lmsysorg/sgl-model-gateway:v0.3.2"
     },
     "docker": {
         "pull_registry": "docker.1ms.run"

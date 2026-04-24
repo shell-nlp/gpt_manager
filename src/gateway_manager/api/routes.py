@@ -5,7 +5,8 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from loguru import logger
+from pydantic import BaseModel, Field
 
 from gateway_manager.core.config_manager import ConfigManager
 from gateway_manager.core.constants import DEFAULT_IMAGES
@@ -553,6 +554,35 @@ class WorkerUrlStatus(BaseModel):
     models: Optional[List[str]] = None
 
 
+class RoutedWorker(BaseModel):
+    url: str
+    models: List[str] = Field(default_factory=list)
+
+
+class RoutedModel(BaseModel):
+    id: str
+    workers: List[str] = Field(default_factory=list)
+
+
+class GatewayRoutesResponse(BaseModel):
+    gateway_url: str
+    models: List[RoutedModel]
+    workers: List[RoutedWorker]
+    error: Optional[str] = None
+
+
+def _extract_model_ids(data: dict) -> List[str]:
+    return [
+        item.get("id")
+        for item in data.get("data", [])
+        if isinstance(item, dict) and item.get("id")
+    ]
+
+
+def _log_openai_api_call(url: str) -> None:
+    logger.info(f"正在调用 OpenAI-compatible API: {url}")
+
+
 @router.get("/api/worker-urls/check")
 async def check_worker_urls():
     if gateway_manager is None:
@@ -564,14 +594,12 @@ async def check_worker_urls():
     for url in gateway_manager.worker_urls:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{url.rstrip('/')}/v1/models")
+                models_url = f"{url.rstrip('/')}/v1/models"
+                _log_openai_api_call(models_url)
+                response = await client.get(models_url)
                 if response.status_code == 200:
                     data = response.json()
-                    models = [
-                        item.get("id")
-                        for item in data.get("data", [])
-                        if isinstance(item, dict) and item.get("id")
-                    ]
+                    models = _extract_model_ids(data)
                     results.append(WorkerUrlStatus(url=url, status="healthy", models=models))
                 else:
                     results.append(WorkerUrlStatus(url=url, status="unhealthy", error=f"HTTP {response.status_code}"))
@@ -583,3 +611,81 @@ async def check_worker_urls():
             results.append(WorkerUrlStatus(url=url, status="unhealthy", error=str(e)))
 
     return {"results": [r.model_dump() for r in results]}
+
+
+@router.get("/api/gateway/routes", response_model=GatewayRoutesResponse)
+async def get_gateway_routes():
+    if gateway_manager is None:
+        raise HTTPException(status_code=500, detail="Gateway manager not initialized")
+
+    import httpx
+
+    gateway_url = f"http://127.0.0.1:{gateway_manager.port}"
+    workers: List[RoutedWorker] = []
+    gateway_models: List[str] = []
+    error: Optional[str] = None
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            workers_url = f"{gateway_url}/workers"
+            _log_openai_api_call(workers_url)
+            workers_response = await client.get(workers_url)
+            if workers_response.status_code == 200:
+                workers_data = workers_response.json()
+                raw_workers = workers_data.get("workers", [])
+                if isinstance(raw_workers, list):
+                    for worker in raw_workers:
+                        if isinstance(worker, str):
+                            workers.append(RoutedWorker(url=worker))
+                        elif isinstance(worker, dict):
+                            url = worker.get("url") or worker.get("worker_url") or worker.get("endpoint")
+                            if url:
+                                models = []
+                                if worker.get("model_id"):
+                                    models.append(worker["model_id"])
+                                workers.append(RoutedWorker(url=url, models=models))
+            else:
+                error = f"/workers HTTP {workers_response.status_code}"
+
+            models_url = f"{gateway_url}/v1/models"
+            _log_openai_api_call(models_url)
+            models_response = await client.get(models_url)
+            if models_response.status_code == 200:
+                gateway_models = _extract_model_ids(models_response.json())
+            elif error:
+                error = f"{error}; /v1/models HTTP {models_response.status_code}"
+            else:
+                error = f"/v1/models HTTP {models_response.status_code}"
+
+            for worker in workers:
+                try:
+                    worker_models_url = f"{worker.url.rstrip('/')}/v1/models"
+                    _log_openai_api_call(worker_models_url)
+                    response = await client.get(worker_models_url)
+                    if response.status_code == 200:
+                        worker.models = sorted(set(worker.models + _extract_model_ids(response.json())))
+                except Exception:
+                    continue
+    except httpx.TimeoutException:
+        error = "连接网关超时"
+    except httpx.RequestError as exc:
+        error = f"连接网关失败: {exc}"
+    except Exception as exc:
+        error = str(exc)
+
+    model_to_workers: Dict[str, List[str]] = {model: [] for model in gateway_models}
+    for worker in workers:
+        for model in worker.models:
+            model_to_workers.setdefault(model, []).append(worker.url)
+
+    routed_models = [
+        RoutedModel(id=model, workers=model_to_workers.get(model, []))
+        for model in sorted(model_to_workers)
+    ]
+
+    return GatewayRoutesResponse(
+        gateway_url=gateway_url,
+        models=routed_models,
+        workers=workers,
+        error=error,
+    )

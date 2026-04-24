@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { API, Gateway, WorkerUrlStatus } from '@/lib/api';
+import { API, Gateway, GatewayRoutes, WorkerUrlStatus } from '@/lib/api';
 import { Network, Play, Square, RefreshCw, CheckCircle2, XCircle, AlertCircle, Globe, Shield, Route, Settings2, Terminal, ChevronDown, ChevronUp, Rocket, Zap } from 'lucide-react';
 
 function SectionCard({ title, subtitle, icon: Icon, color, children, action }: {
@@ -256,6 +256,7 @@ function FormInput({ label, value, onChange, type = 'text', placeholder, require
 
 export default function GatewayPage() {
   const [gateway, setGateway] = useState<Gateway | null>(null);
+  const [gatewayRoutes, setGatewayRoutes] = useState<GatewayRoutes | null>(null);
   const [workerStatuses, setWorkerStatuses] = useState<WorkerUrlStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -276,8 +277,12 @@ export default function GatewayPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const gatewayData = await API.getGateway();
+      const [gatewayData, routesData] = await Promise.all([
+        API.getGateway(),
+        API.getGatewayRoutes(),
+      ]);
       setGateway(gatewayData);
+      setGatewayRoutes(routesData);
       setFormData({
         host: gatewayData.host,
         port: gatewayData.port,
@@ -294,8 +299,13 @@ export default function GatewayPage() {
   async function handleTestUrls() {
     setTesting(true);
     try {
-      const result = await API.checkWorkerUrls();
+      const [checkResult, routesData] = await Promise.all([
+        API.checkWorkerUrls(),
+        API.getGatewayRoutes(),
+      ]);
+      const result = checkResult;
       setWorkerStatuses(result.results);
+      setGatewayRoutes(routesData);
     } catch (err: any) {
       alert('测试失败: ' + err.message);
     } finally {
@@ -382,6 +392,7 @@ export default function GatewayPage() {
 
   const isRunning = gateway?.status === 'running';
   const healthyCount = workerStatuses.filter(s => s.status === 'healthy').length;
+  const routedModelCount = gatewayRoutes?.models.length || 0;
 
   return (
     <div>
@@ -450,6 +461,27 @@ export default function GatewayPage() {
               <p style={{ fontWeight: 700, fontSize: '1.1rem' }}>
                 {isRunning ? '运行中' : '已停止'}
               </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, var(--violet) 0%, var(--accent-secondary) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 24px var(--violet-glow)',
+            }}>
+              <Route size={24} color="white" />
+            </div>
+            <div>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 500 }}>已路由模型</p>
+              <p style={{ fontWeight: 700, fontSize: '1.1rem' }}>{routedModelCount} 个</p>
             </div>
           </div>
         </div>
@@ -641,6 +673,90 @@ export default function GatewayPage() {
           </button>
         </div>
       </form>
+
+      <div style={{ marginTop: '1.5rem' }}>
+        <SectionCard
+          title="已路由模型"
+          subtitle={`网关 ${gatewayRoutes?.gateway_url || `http://127.0.0.1:${gateway?.port || 8082}`} 当前暴露的模型与 Worker 映射`}
+          icon={Route}
+          color="var(--violet)"
+          action={
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={(e) => {
+                e.stopPropagation();
+                loadData();
+              }}
+            >
+              <RefreshCw size={12} />
+              刷新
+            </button>
+          }
+        >
+          {gatewayRoutes?.error && (
+            <div style={{
+              marginBottom: '1rem',
+              padding: '0.875rem',
+              background: 'rgba(244, 63, 94, 0.08)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--rose)',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+            }}>
+              网关路由查询失败：{gatewayRoutes.error}
+            </div>
+          )}
+
+          {!gatewayRoutes || gatewayRoutes.models.length === 0 ? (
+            <div style={{
+              padding: '1.5rem',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+              background: 'var(--bg-secondary)',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px dashed var(--border-subtle)',
+            }}>
+              当前网关没有返回已路由模型，请确认网关运行中且 Worker 已注册。
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '0.875rem' }}>
+              {gatewayRoutes.models.map((model) => (
+                <div key={model.id} style={{
+                  padding: '1rem',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-lg)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', fontWeight: 700 }}>
+                      {model.id}
+                    </span>
+                    <span className="badge badge-info">{model.workers.length} 个 Worker</span>
+                  </div>
+                  {model.workers.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
+                      {model.workers.map((worker) => (
+                        <span key={worker} style={{
+                          padding: '0.35rem 0.65rem',
+                          background: 'var(--bg-tertiary)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border-subtle)',
+                          fontSize: '0.78rem',
+                          fontFamily: 'JetBrains Mono, monospace',
+                          color: 'var(--text-secondary)',
+                        }}>
+                          {worker}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      </div>
 
       {workerStatuses.length > 0 && (
         <div style={{ marginTop: '1.5rem' }}>
