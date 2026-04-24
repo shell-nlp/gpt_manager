@@ -395,6 +395,24 @@ input::placeholder, textarea::placeholder {
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--blue) 0%, var(--cyan) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px var(--blue-glow);
+  animation: float 3s ease-in-out infinite;
+}
+
 @keyframes gradient-shift {
   0% {
     background-position: 0% 50%;

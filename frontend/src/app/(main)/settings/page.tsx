@@ -597,7 +597,7 @@ export default function SettingsPage() {
                 width: '36px',
                 height: '36px',
                 borderRadius: '10px',
-                background: 'linear-gradient(135deg, var(--violet) 0%, var(--purple) 100%)',
+                background: 'linear-gradient(135deg, var(--violet) 0%, var(--accent-secondary) 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

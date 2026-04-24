@@ -1,4 +1,5 @@
 import json
+import shlex
 import subprocess
 from typing import Any, Dict, List, Optional
 
@@ -88,10 +89,17 @@ class DockerManager:
         gpu_ids: Optional[List[int]] = None,
         restart_policy: str = "unless-stopped",
         detach: bool = True,
+        recreate: bool = False,
     ) -> Optional[str]:
         try:
             if self.container_exists(name):
+                if recreate and not self.remove_container(name, force=True):
+                    return None
+
+            if self.container_exists(name):
                 logger.info(f"容器 {name} 已存在")
+                if self.get_container_status(name) != ContainerStatus.RUNNING and not self.start_container(name):
+                    return None
                 return self.get_container_id(name)
 
             args = ["docker", "run", "-d", "--name", name]
@@ -105,8 +113,9 @@ class DockerManager:
 
             if volumes:
                 for host_path, mount_config in volumes.items():
-                    mode = mount_config.get("bind", "ro")
-                    args.extend(["-v", f"{host_path}:{mode}"])
+                    container_path = mount_config.get("bind", host_path)
+                    mode = mount_config.get("mode", "ro")
+                    args.extend(["-v", f"{host_path}:{container_path}:{mode}"])
 
             if environment:
                 for env_var in environment:
@@ -121,7 +130,7 @@ class DockerManager:
             args.append(image)
 
             if command:
-                args.extend(command.split())
+                args.extend(shlex.split(command))
 
             logger.info(f"创建容器命令: {' '.join(args)}")
             result = self._run_command(args, timeout=60)
@@ -246,11 +255,19 @@ class DockerManager:
             result = self._run_command(["docker", "info", "--format", "{{json .}}"])
             if result.returncode == 0:
                 info = json.loads(result.stdout)
+                images = info.get("Images", 0)
+                containers_total = info.get("Containers", 0)
+                nvidia_runtime = info.get("Runtimes", {}).get("nvidia")
                 return {
                     "version": info.get("ServerVersion", "unknown"),
                     "containers_running": info.get("ContainersRunning", 0),
                     "containers_stopped": info.get("ContainersStopped", 0),
-                    "images": info.get("Images", 0),
+                    "containers_total": containers_total,
+                    "images": images,
+                    "images_total": images,
+                    "driver": info.get("Driver", "unknown"),
+                    "nvidia_version": "available" if nvidia_runtime else "N/A",
+                    "memory_total": info.get("MemTotal", 0),
                 }
             return {"error": "Failed to get docker info"}
         except Exception as e:
@@ -263,16 +280,19 @@ class DockerManager:
             if result.returncode == 0:
                 return True
             if registry:
-                result = self._run_command(["docker", "image", "inspect", f"{registry}/{image}"])
+                result = self._run_command(["docker", "image", "inspect", self._with_registry(image, registry)])
                 return result.returncode == 0
             return False
         except Exception:
             return False
 
+    def _with_registry(self, image: str, registry: str) -> str:
+        return f"{registry.rstrip('/')}/{image.lstrip('/')}"
+
     def pull_image(self, image: str, timeout: int = 600, registry: str = "") -> tuple[bool, str]:
         pull_image_name = image
         if registry:
-            pull_image_name = f"{registry}/{image}"
+            pull_image_name = self._with_registry(image, registry)
         try:
             logger.info(f"开始拉取镜像: {pull_image_name}")
             result = self._run_command(["docker", "pull", pull_image_name], timeout=timeout)
@@ -290,7 +310,7 @@ class DockerManager:
         try:
             result = self._run_command([
                 "docker", "images", "--format",
-                "{{.Repository}}:{{.Tag}}|{{.ID}}|{{.Size}}"
+                "{{.Repository}}|{{.Tag}}|{{.ID}}|{{.Size}}"
             ])
             if result.returncode != 0:
                 return []

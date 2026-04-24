@@ -10,14 +10,20 @@ def test_imports():
         InferenceBackendType, ContainerStatus, LoadBalancingPolicy,
         BaseModelConfig, SGLangConfig, ModelInstance, GatewayConfig, AppConfig
     )
+    assert all((
+        InferenceBackendType, ContainerStatus, LoadBalancingPolicy,
+        BaseModelConfig, SGLangConfig, ModelInstance, GatewayConfig, AppConfig,
+    ))
     print("✓ Schemas imported successfully")
 
     from gateway_manager.core.backend_manager import (
         BackendManagerFactory, SGLangManager
     )
+    assert all((BackendManagerFactory, SGLangManager))
     print("✓ Backend managers imported successfully")
 
     from gateway_manager.core.docker_manager import DockerManager
+    assert DockerManager
     print("✓ Docker manager imported successfully")
 
     return True

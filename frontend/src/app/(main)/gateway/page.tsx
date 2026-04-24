@@ -28,7 +28,6 @@ function SectionCard({ title, subtitle, icon: Icon, color, children, action }: {
         background: `linear-gradient(90deg, ${color} 0%, ${color}60 100%)`,
       }} />
       <div style={{
-        padding: '1.25rem 1.5rem',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',

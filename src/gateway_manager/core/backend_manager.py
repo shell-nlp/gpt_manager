@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
+import shlex
 from typing import Dict, List, Optional
 
 from gateway_manager.models.schemas import (
@@ -37,6 +39,19 @@ class BaseBackendManager(ABC):
     def get_gpu_ids(self) -> List[int]:
         return self.config.gpu_ids
 
+    def _quote(self, value: object) -> str:
+        return shlex.quote(str(value))
+
+    def _build_model_volume(self) -> Dict[str, Dict[str, str]]:
+        model_path = Path(self.config.model_path)
+        if not model_path.is_absolute():
+            return {}
+
+        host_path = str(model_path.parent)
+        return {
+            host_path: {"bind": host_path, "mode": "ro"},
+        }
+
 
 class SGLangManager(BaseBackendManager):
     def __init__(self, config: SGLangConfig, image: str = DEFAULT_IMAGES["sglang"]):
@@ -46,9 +61,9 @@ class SGLangManager(BaseBackendManager):
     def build_command(self) -> str:
         cmd_parts = [
             "python3 -m sglang.launch_server",
-            f"--model-path {self.sglang_config.model_path}",
-            f"--served-model-name {self.sglang_config.served_model_name}",
-            f"--host {self.sglang_config.host}",
+            f"--model-path {self._quote(self.sglang_config.model_path)}",
+            f"--served-model-name {self._quote(self.sglang_config.served_model_name)}",
+            f"--host {self._quote(self.sglang_config.host)}",
             f"--port {self.sglang_config.port}",
             f"--tensor-parallel-size {self.sglang_config.tensor_parallel}",
         ]
@@ -65,7 +80,7 @@ class SGLangManager(BaseBackendManager):
                 if value:
                     cmd_parts.append(f"--{key}")
             else:
-                cmd_parts.append(f"--{key} {value}")
+                cmd_parts.append(f"--{key} {self._quote(value)}")
 
         return " ".join(cmd_parts)
 
@@ -73,9 +88,7 @@ class SGLangManager(BaseBackendManager):
         return {f"{self.sglang_config.port}/tcp": self.sglang_config.port}
 
     def build_volumes(self) -> Dict[str, Dict[str, str]]:
-        return {
-            "/data/models": {"bind": "/data/models", "mode": "ro"}
-        }
+        return self._build_model_volume()
 
     def build_environment(self) -> List[str]:
         return [
@@ -91,9 +104,9 @@ class VLLMManager(BaseBackendManager):
     def build_command(self) -> str:
         cmd_parts = [
             "python3 -m vllm.entrypoints.openai.api_server",
-            f"--model {self.vllm_config.model_path}",
-            f"--served-model-name {self.vllm_config.served_model_name}",
-            f"--host {self.vllm_config.host}",
+            f"--model {self._quote(self.vllm_config.model_path)}",
+            f"--served-model-name {self._quote(self.vllm_config.served_model_name)}",
+            f"--host {self._quote(self.vllm_config.host)}",
             f"--port {self.vllm_config.port}",
             f"--tensor-parallel-size {self.vllm_config.tensor_parallel}",
         ]
@@ -108,7 +121,7 @@ class VLLMManager(BaseBackendManager):
                 if value:
                     cmd_parts.append(f"--{key}")
             else:
-                cmd_parts.append(f"--{key} {value}")
+                cmd_parts.append(f"--{key} {self._quote(value)}")
 
         return " ".join(cmd_parts)
 
@@ -116,9 +129,7 @@ class VLLMManager(BaseBackendManager):
         return {f"{self.vllm_config.port}/tcp": self.vllm_config.port}
 
     def build_volumes(self) -> Dict[str, Dict[str, str]]:
-        return {
-            "/data/models": {"bind": "/data/models", "mode": "ro"}
-        }
+        return self._build_model_volume()
 
     def build_environment(self) -> List[str]:
         return [

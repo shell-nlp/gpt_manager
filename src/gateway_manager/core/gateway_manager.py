@@ -71,6 +71,7 @@ class GatewayManager:
                 command=cmd,
                 ports=ports,
                 restart_policy="always",
+                recreate=True,
             )
 
             if container:

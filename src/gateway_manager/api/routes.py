@@ -549,7 +549,8 @@ async def get_policy_types():
 class WorkerUrlStatus(BaseModel):
     url: str
     status: str
-    message: Optional[str] = None
+    error: Optional[str] = None
+    models: Optional[List[str]] = None
 
 
 @router.get("/api/worker-urls/check")
@@ -565,14 +566,20 @@ async def check_worker_urls():
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f"{url.rstrip('/')}/v1/models")
                 if response.status_code == 200:
-                    results.append(WorkerUrlStatus(url=url, status="healthy", message="OK"))
+                    data = response.json()
+                    models = [
+                        item.get("id")
+                        for item in data.get("data", [])
+                        if isinstance(item, dict) and item.get("id")
+                    ]
+                    results.append(WorkerUrlStatus(url=url, status="healthy", models=models))
                 else:
-                    results.append(WorkerUrlStatus(url=url, status="error", message=f"HTTP {response.status_code}"))
+                    results.append(WorkerUrlStatus(url=url, status="unhealthy", error=f"HTTP {response.status_code}"))
         except httpx.TimeoutException:
-            results.append(WorkerUrlStatus(url=url, status="error", message="连接超时"))
+            results.append(WorkerUrlStatus(url=url, status="unhealthy", error="连接超时"))
         except httpx.RequestError as e:
-            results.append(WorkerUrlStatus(url=url, status="error", message=f"连接失败: {str(e)}"))
+            results.append(WorkerUrlStatus(url=url, status="unhealthy", error=f"连接失败: {str(e)}"))
         except Exception as e:
-            results.append(WorkerUrlStatus(url=url, status="error", message=str(e)))
+            results.append(WorkerUrlStatus(url=url, status="unhealthy", error=str(e)))
 
     return {"results": [r.model_dump() for r in results]}

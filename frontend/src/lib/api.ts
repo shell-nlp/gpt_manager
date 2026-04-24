@@ -47,8 +47,11 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}, skipCa
 }
 
 export interface DockerInfo {
+  version?: string;
   containers_running: number;
   containers_total: number;
+  containers_stopped?: number;
+  images?: number;
   images_total: number;
   driver: string;
   nvidia_version: string;

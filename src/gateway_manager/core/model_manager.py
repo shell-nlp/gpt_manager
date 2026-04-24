@@ -39,7 +39,8 @@ class ModelManager:
 
     def _create_model_from_config(self, model_data: Dict[str, Any]) -> ModelInstance:
         model_id = model_data.get("id", self._generate_model_id())
-        container_name = model_data.get("container_name", f"sglang-{model_data.get('port', 30000)}")
+        backend_type = InferenceBackendType(model_data.get("backend_type", "sglang"))
+        container_name = model_data.get("container_name", f"{backend_type.value}-{model_data.get('port', 30000)}")
 
         gpu_ids = model_data.get("gpu_ids", [0])
         if isinstance(gpu_ids, str):
@@ -54,7 +55,6 @@ class ModelManager:
             gpu_ids=gpu_ids,
         )
 
-        backend_type = InferenceBackendType(model_data.get("backend_type", "sglang"))
         if backend_type == InferenceBackendType.SGLANG:
             config = SGLangConfig(**base_config.model_dump())
         elif backend_type == InferenceBackendType.VLLM:
@@ -62,13 +62,18 @@ class ModelManager:
         else:
             config = base_config
 
+        image = model_data.get("image") or self.config_manager.get(
+            f"images.{backend_type.value}_image",
+            DEFAULT_IMAGES.get(backend_type.value, DEFAULT_IMAGES["sglang"]),
+        )
+
         model = ModelInstance(
             id=model_id,
             name=model_data["name"],
             backend_type=backend_type,
             config=config,
             container_name=container_name,
-            image=model_data.get("image", ""),
+            image=image,
             status=ContainerStatus.STOPPED,
         )
 
@@ -106,8 +111,11 @@ class ModelManager:
         image: Optional[str] = None,
         **kwargs,
     ) -> ModelInstance:
+        if any(existing.config.port == port for existing in self.models.values()):
+            raise ValueError(f"端口 {port} 已被其他模型使用")
+
         model_id = self._generate_model_id()
-        container_name = f"sglang-{port}"
+        container_name = f"{backend_type.value}-{port}"
 
         if gpu_ids is None:
             gpu_ids = [0]
@@ -167,6 +175,7 @@ class ModelManager:
                 environment=manager.build_environment(),
                 shm_size=manager.get_shm_size(),
                 gpu_ids=manager.get_gpu_ids(),
+                recreate=True,
             )
 
             if container_id:
@@ -242,7 +251,7 @@ class ModelManager:
             logger.error(f"模型 {model_id} 不存在")
             return False
 
-        if "image" in kwargs:
+        if kwargs.get("image") is not None:
             model.image = kwargs["image"]
 
         self._save_models_to_config()
@@ -252,6 +261,7 @@ class ModelManager:
     def get_worker_urls(self) -> List[str]:
         urls = []
         for model in self.models.values():
+            model.status = self.docker_manager.get_container_status(model.container_name)
             if model.status == ContainerStatus.RUNNING:
                 port = model.config.port
                 host = model.config.host
